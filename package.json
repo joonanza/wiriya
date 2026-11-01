@@ -1,0 +1,11 @@
+{
+  "name": "wiriya-fare",
+  "version": "0.1.0",
+  "private": true,
+  "description": "เว็บแอปคำนวณค่าเดินทางและรับจองตรง (prototype)",
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

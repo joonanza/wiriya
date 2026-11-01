@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ตั้งค่าอัตราค่าโดยสาร</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>ตั้งค่า (Admin)</h1>
+    <nav><a href="index.html">คำนวณราคา</a><a href="admin.html" aria-current="page">ตั้งค่า (Admin)</a></nav>
+  </header>
+
+  <main>
+    <div class="layout">
+      <!-- ===== 1. ต้นทุนรถ ===== -->
+      <section>
+        <div class="card" id="costForm">
+          <h2>1. ต้นทุนรถของคุณ</h2>
+          <div class="field"><label>ชื่อรถ</label><input data-c="vehicleName"></div>
+          <h3>น้ำมัน</h3>
+          <div class="row">
+            <div class="field"><label>ราคาน้ำมัน (฿/L)</label><input type="number" step="0.01" data-c="fuelPrice"></div>
+            <div class="field"><label>อัตราสิ้นเปลือง (km/L)</label><input type="number" step="0.1" data-c="kmPerLiter"></div>
+          </div>
+          <h3>ค่าเสื่อมราคา</h3>
+          <div class="row">
+            <div class="field"><label>ราคารถ (฿)</label><input type="number" step="1000" data-c="carPrice"></div>
+            <div class="field"><label>มูลค่าซาก (%)</label><input type="number" step="1" data-c="residualPct" data-pct></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>อายุใช้งาน (ปี)</label><input type="number" step="1" data-c="years"></div>
+            <div class="field"><label>ระยะวิ่งต่อปี (km)</label><input type="number" step="1000" data-c="kmPerYear"></div>
+          </div>
+          <h3>ค่าใช้จ่ายรายปี (฿/ปี)</h3>
+          <div class="row3">
+            <div class="field"><label>ประกันภัย</label><input type="number" step="100" data-c="insurancePerYear"></div>
+            <div class="field"><label>ภาษี + พ.ร.บ.</label><input type="number" step="100" data-c="taxCompulsoryPerYear"></div>
+            <div class="field"><label>อื่น ๆ</label><input type="number" step="100" data-c="otherPerYear"></div>
+          </div>
+          <h3>ค่าบำรุงรักษา</h3>
+          <table class="grid">
+            <thead><tr><th>รายการ</th><th>ค่าใช้จ่าย (฿)</th><th>ทุก ๆ (km)</th><th></th></tr></thead>
+            <tbody id="maintRows"></tbody>
+          </table>
+          <div class="actions"><button type="button" id="addMaint">+ เพิ่มรายการ</button></div>
+          <h3>นโยบายราคา</h3>
+          <div class="row">
+            <div class="field"><label>ระยะวิ่งรถเปล่า (%)</label><input type="number" step="1" data-c="deadheadPct" data-pct></div>
+            <div class="field"><label>กำไรบนต้นทุนรถ (%)</label><input type="number" step="1" data-c="marginPct" data-pct></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>ค่าแรงคนขับ (฿/ชม.)</label><input type="number" step="10" data-c="driverHourly"></div>
+            <div class="field"><label>ชดเชยขากลับ (× ต้นทุน/km)</label><input type="number" step="0.1" data-c="returnFactor"></div>
+          </div>
+          <div class="actions">
+            <button type="button" id="resetCost">คืนค่าเริ่มต้น</button>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="card">
+          <h2>ต้นทุนต่อกิโลเมตร</h2>
+          <div class="kpis" id="costKpis"></div>
+          <div class="bar" id="costBar" aria-hidden="true"></div>
+          <div class="legend" id="costLegend"></div>
+          <h3>เรทราคาที่แนะนำ</h3>
+          <div id="recommend"></div>
+          <div class="actions"><button type="button" class="primary" id="applyRates">นำเรทแนะนำไปใช้ในตั้งค่าราคา ↓</button></div>
+        </div>
+
+        <div class="card">
+          <h2>ทดลองคำนวณทริปและกำไร</h2>
+          <p class="muted">ใช้เรทจากหัวข้อ "2. ตั้งค่าราคา" (รถเก๋ง ช่วงกลางวัน ขาเดียว ไม่รวมทางด่วน)</p>
+          <div class="scroll-x"><table class="breakdown num" id="simTable"></table></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===== 2. ตั้งค่าราคา ===== -->
+    <div class="card" id="fareForm" style="margin-top:16px">
+      <h2>2. ตั้งค่าราคา (ใช้ในหน้าคำนวณราคา)</h2>
+      <div class="cols2">
+        <div>
+          <h3>ข้อมูลธุรกิจ</h3>
+          <div class="field"><label>ชื่อที่แสดง</label><input data-f="business.name"></div>
+          <div class="row">
+            <div class="field"><label>เบอร์โทร</label><input data-f="business.phone" type="tel"></div>
+            <div class="field"><label>LINE OA ID (เช่น @wiriya)</label><input data-f="business.lineOaId"></div>
+          </div>
+          <h3>ค่าพื้นฐาน</h3>
+          <div class="row3">
+            <div class="field"><label>ค่าเรียกรถ (฿)</label><input type="number" step="1" data-f="baseFare"></div>
+            <div class="field"><label>ค่าเวลา (฿/นาที)</label><input type="number" step="0.25" data-f="perMinute"></div>
+            <div class="field"><label>ขั้นต่ำ (฿)</label><input type="number" step="10" data-f="minFare"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>ปัดเศษขึ้นทีละ (฿)</label><input type="number" step="1" data-f="roundTo"></div>
+            <div class="field"><label>ตัวคูณเผื่อรถติด (× เวลา)</label><input type="number" step="0.05" data-f="trafficFactor"></div>
+          </div>
+          <h3>ค่าระยะทางแบบขั้นบันได</h3>
+          <table class="grid">
+            <thead><tr><th>ถึง km (ว่าง = ไม่จำกัด)</th><th>฿/km</th><th></th></tr></thead>
+            <tbody id="tierRows"></tbody>
+          </table>
+          <div class="actions"><button type="button" id="addTier">+ เพิ่มช่วง</button></div>
+        </div>
+        <div>
+          <h3>ตัวคูณช่วงเวลา</h3>
+          <div class="row3">
+            <div class="field"><label>กลางคืน เริ่ม (ชม.)</label><input type="number" step="0.5" min="0" max="24" data-f="night.startHour"></div>
+            <div class="field"><label>ถึง (ชม.)</label><input type="number" step="0.5" min="0" max="24" data-f="night.endHour"></div>
+            <div class="field"><label>ตัวคูณ</label><input type="number" step="0.05" data-f="night.multiplier"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>ชั่วโมงเร่งด่วน (จ.–ศ.) ตัวคูณ</label><input type="number" step="0.05" data-f="peak.multiplier"></div>
+            <div class="field"><label>ช่วงเวลา (เช่น 7-9, 16.5-19.5)</label><input id="peakWindows"></div>
+          </div>
+          <h3>ทางไกล / บริการเสริม</h3>
+          <div class="row">
+            <div class="field"><label>คิดขากลับเมื่อเกิน (km)</label><input type="number" step="5" data-f="returnTrip.thresholdKm"></div>
+            <div class="field"><label>ค่าขากลับ (฿/km ที่เกิน)</label><input type="number" step="0.5" data-f="returnTrip.perKm"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>ค่ารอ (฿/ชม.)</label><input type="number" step="10" data-f="waitPerHour"></div>
+            <div class="field"><label>ค่าสนามบิน (฿)</label><input type="number" step="10" data-f="airportFee"></div>
+          </div>
+          <h3>ประเภทรถ</h3>
+          <table class="grid">
+            <thead><tr><th>ชื่อ</th><th>ที่นั่ง</th><th>ตัวคูณ</th></tr></thead>
+            <tbody id="vehicleRows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="primary" id="saveFare">บันทึก</button>
+        <button type="button" id="resetFare">คืนค่าเริ่มต้น</button>
+        <button type="button" id="exportFare">ส่งออก JSON</button>
+      </div>
+      <p class="muted">Prototype นี้เก็บค่าไว้ในเบราว์เซอร์เครื่องนี้ (localStorage) เท่านั้น ถ้าจะให้ลูกค้าเห็นเรทเดียวกัน ต้องย้ายไปเก็บที่ backend</p>
+    </div>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>
