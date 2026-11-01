@@ -1,8 +1,8 @@
 // ===== Fare config: ค่าเริ่มต้นคำนวณจาก cost model และเก็บค่าที่แก้ไว้ใน localStorage =====
 import { DEFAULT_COST_INPUTS, recommendRates } from './cost.js';
 
-const FARE_KEY = 'wiriya.fareConfig.v1';
-const COST_KEY = 'wiriya.costInputs.v1';
+const FARE_KEY = 'wiriya.fareConfig.v2';
+const COST_KEY = 'wiriya.costInputs.v2';
 
 export function buildFareConfig(rates, overrides = {}) {
   return {
@@ -18,10 +18,10 @@ export function buildFareConfig(rates, overrides = {}) {
     returnTrip: { thresholdKm: 60, perKm: rates.returnPerKm },
     waitPerHour: 150,
     airportFee: 50,
+    // EV: ระยะใช้งานจริงต่อชาร์จ (เผื่อแบตสำรอง ~15%) → ใช้แจ้งจำนวนครั้งที่ต้องแวะชาร์จในทริปไกล
+    charging: { rangeKm: 280, minutesPerStop: 30, billTime: false },
     vehicles: [
-      { id: 'sedan', name: 'รถเก๋ง 4 ที่นั่ง', seats: 4, multiplier: 1.0 },
-      { id: 'suv', name: 'SUV / MPV 7 ที่นั่ง', seats: 7, multiplier: 1.3 },
-      { id: 'van', name: 'รถตู้ 10 ที่นั่ง', seats: 10, multiplier: 1.6 },
+      { id: 'c5ev', name: 'Omoda C5 EV (SUV, 4 ผู้โดยสาร)', seats: 4, multiplier: 1.0 },
     ],
     ...overrides,
   };

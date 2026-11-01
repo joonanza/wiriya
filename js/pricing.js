@@ -88,6 +88,16 @@ export function calculateFare(cfg, trip) {
   add('ค่าเข้า-ออกสนามบิน', airport);
   subtotal += wait + airport;
 
+  // 5.1) EV: แวะชาร์จระหว่างทาง (สมมติออกรถแบตเต็ม)
+  const ch = cfg.charging;
+  const chargeStops = ch && ch.rangeKm > 0 ? Math.max(0, Math.ceil(km / ch.rangeKm - 1e-9) - 1) : 0;
+  const chargeMinutes = chargeStops * (ch?.minutesPerStop || 0);
+  if (chargeStops && ch.billTime) {
+    const c = chargeMinutes * cfg.perMinute;
+    add(`เวลาแวะชาร์จ ${chargeStops} ครั้ง`, c, `${chargeMinutes} นาที × ${cfg.perMinute} ฿/นาที`);
+    subtotal += c;
+  }
+
   // 6) ขั้นต่ำ + ปัดเศษ
   if (subtotal < cfg.minFare) {
     add('ปรับเป็นค่าโดยสารขั้นต่ำ', cfg.minFare - subtotal, `ขั้นต่ำ ${cfg.minFare} ฿`);
@@ -107,6 +117,8 @@ export function calculateFare(cfg, trip) {
     lines,
     km,
     min,
+    chargeStops,
+    chargeMinutes,
     vehicle,
     timeMultiplier: tm,
   };

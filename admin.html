@@ -21,8 +21,23 @@
         <div class="card" id="costForm">
           <h2>1. ต้นทุนรถของคุณ</h2>
           <div class="field"><label>ชื่อรถ</label><input data-c="vehicleName"></div>
-          <h3>น้ำมัน</h3>
-          <div class="row">
+          <h3>พลังงาน</h3>
+          <div class="field">
+            <label>ประเภทพลังงาน</label>
+            <select data-c="energyType"><option value="ev">ไฟฟ้า (EV)</option><option value="fuel">น้ำมัน</option></select>
+          </div>
+          <div data-energy="ev">
+            <div class="row">
+              <div class="field"><label>อัตราใช้ไฟ (kWh/100 km ที่ปลั๊ก)</label><input type="number" step="0.1" data-c="kwhPer100km"></div>
+              <div class="field"><label>สัดส่วนชาร์จบ้าน (%)</label><input type="number" step="5" data-c="homeSharePct" data-pct></div>
+            </div>
+            <div class="row">
+              <div class="field"><label>ค่าไฟบ้าน (฿/kWh)</label><input type="number" step="0.1" data-c="homeRate"></div>
+              <div class="field"><label>ค่าชาร์จ DC สาธารณะ (฿/kWh)</label><input type="number" step="0.1" data-c="dcRate"></div>
+            </div>
+            <p class="muted" id="blendNote"></p>
+          </div>
+          <div class="row" data-energy="fuel">
             <div class="field"><label>ราคาน้ำมัน (฿/L)</label><input type="number" step="0.01" data-c="fuelPrice"></div>
             <div class="field"><label>อัตราสิ้นเปลือง (km/L)</label><input type="number" step="0.1" data-c="kmPerLiter"></div>
           </div>
@@ -75,7 +90,7 @@
 
         <div class="card">
           <h2>ทดลองคำนวณทริปและกำไร</h2>
-          <p class="muted">ใช้เรทจากหัวข้อ "2. ตั้งค่าราคา" (รถเก๋ง ช่วงกลางวัน ขาเดียว ไม่รวมทางด่วน)</p>
+          <p class="muted">ใช้เรทจากหัวข้อ "2. ตั้งค่าราคา" (รถคันแรก ช่วงกลางวัน ขาเดียว ไม่รวมทางด่วน)</p>
           <div class="scroll-x"><table class="breakdown num" id="simTable"></table></div>
         </div>
       </section>
@@ -129,11 +144,18 @@
             <div class="field"><label>ค่ารอ (฿/ชม.)</label><input type="number" step="10" data-f="waitPerHour"></div>
             <div class="field"><label>ค่าสนามบิน (฿)</label><input type="number" step="10" data-f="airportFee"></div>
           </div>
+          <h3>EV: แวะชาร์จระหว่างทาง</h3>
+          <div class="row3">
+            <div class="field"><label>ระยะวิ่งจริง/ชาร์จ (km)</label><input type="number" step="10" data-f="charging.rangeKm"></div>
+            <div class="field"><label>นาที/ครั้ง</label><input type="number" step="5" data-f="charging.minutesPerStop"></div>
+            <div class="field"><label>คิดเงินเวลาชาร์จ</label><select data-f="charging.billTime" data-bool><option value="false">ไม่คิด (แจ้งเฉย ๆ)</option><option value="true">คิดตามค่าเวลา</option></select></div>
+          </div>
           <h3>ประเภทรถ</h3>
           <table class="grid">
-            <thead><tr><th>ชื่อ</th><th>ที่นั่ง</th><th>ตัวคูณ</th></tr></thead>
+            <thead><tr><th>ชื่อ</th><th>ที่นั่ง</th><th>ตัวคูณ</th><th></th></tr></thead>
             <tbody id="vehicleRows"></tbody>
           </table>
+          <div class="actions"><button type="button" id="addVehicle">+ เพิ่มรถ</button></div>
         </div>
       </div>
       <div class="actions">

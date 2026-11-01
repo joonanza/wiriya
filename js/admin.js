@@ -2,7 +2,7 @@ import {
   loadCostInputs, saveCostInputs, resetCostInputs,
   loadFareConfig, saveFareConfig, resetFareConfig, buildFareConfig,
 } from './config.js';
-import { computeCostPerKm, recommendRates } from './cost.js';
+import { computeCostPerKm, recommendRates, blendedKwhRate } from './cost.js';
 import { calculateFare, estimateTripProfit } from './pricing.js';
 
 const $ = (id) => document.getElementById(id);
@@ -14,7 +14,10 @@ let fare = loadFareConfig();
 
 const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 const setPath = (o, p, v) => { const ks = p.split('.'); const last = ks.pop(); ks.reduce((a, k) => (a[k] ??= {}), o)[last] = v; };
-const readInput = (el) => (el.type === 'number' ? (el.value === '' ? 0 : Number(el.value)) : el.value);
+const readInput = (el) => {
+  if (el.hasAttribute('data-bool')) return el.value === 'true';
+  return el.type === 'number' ? (el.value === '' ? 0 : Number(el.value)) : el.value;
+};
 
 // ================= 1. Cost model =================
 function bindCostForm() {
@@ -45,18 +48,20 @@ $('addMaint').onclick = () => { cost.maintenance.push({ name: '', cost: 0, inter
 $('resetCost').onclick = () => { resetCostInputs(); cost = loadCostInputs(); bindCostForm(); onCostChange(); toast('คืนค่าต้นทุนเริ่มต้นแล้ว'); };
 
 const COST_PARTS = [
-  ['fuel', 'น้ำมัน', '#2f8f63'],
+  ['energy', 'พลังงาน', '#2f8f63'],
   ['depreciation', 'ค่าเสื่อม', '#3a6fb0'],
   ['maintenance', 'บำรุงรักษา', '#c98a1b'],
   ['fixed', 'ประกัน/ภาษี/อื่น ๆ', '#8a5bb5'],
 ];
 
 function renderCost() {
+  for (const el of document.querySelectorAll('[data-energy]')) el.hidden = el.dataset.energy !== cost.energyType;
+  $('blendNote').textContent = `ราคาไฟเฉลี่ย ${fmt(blendedKwhRate(cost))} ฿/kWh → ${fmt(cost.kwhPer100km / 100 * blendedKwhRate(cost))} ฿/km`;
   const c = computeCostPerKm(cost);
   const r = recommendRates(cost);
   $('costKpis').innerHTML = [
     ['ต้นทุนรวม', `${fmt(c.total)} ฿/km`],
-    ...COST_PARTS.map(([k, label]) => [label, `${fmt(c[k])} ฿/km`]),
+    ...COST_PARTS.map(([k, label]) => [k === 'energy' ? (cost.energyType === 'ev' ? 'ค่าไฟ' : 'น้ำมัน') : label, `${fmt(c[k])} ฿/km`]),
     ['ต้นทุนต่อเดือน', baht0(c.total * cost.kmPerYear / 12)],
   ].map(([k, v]) => `<div class="kpi"><div class="k">${k}</div><div class="v num">${v}</div></div>`).join('');
 
@@ -99,7 +104,7 @@ $('applyRates').onclick = () => {
 function bindFareForm() {
   for (const el of document.querySelectorAll('[data-f]')) {
     const p = el.dataset.f;
-    el.value = getPath(fare, p) ?? '';
+    el.value = String(getPath(fare, p) ?? '');
     el.oninput = () => { setPath(fare, p, readInput(el)); renderSim(); };
   }
   $('peakWindows').value = (fare.peak?.windows || []).map(([s, e]) => `${s}-${e}`).join(', ');
@@ -131,9 +136,11 @@ $('addTier').onclick = () => {
 };
 
 function renderVehicles() {
-  $('vehicleRows').replaceChildren(...fare.vehicles.map((v) => {
+  $('vehicleRows').replaceChildren(...fare.vehicles.map((v, i) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td><input></td><td><input type="number" step="1"></td><td><input type="number" step="0.05"></td>';
+    tr.innerHTML = `<td><input></td><td><input type="number" step="1"></td><td><input type="number" step="0.05"></td>
+      <td>${fare.vehicles.length > 1 ? '<button type="button" class="icon" aria-label="ลบ">✕</button>' : ''}</td>`;
+    tr.querySelector('button')?.addEventListener('click', () => { fare.vehicles.splice(i, 1); renderVehicles(); renderSim(); });
     const [name, seats, mult] = tr.querySelectorAll('input');
     name.value = v.name; seats.value = v.seats; mult.value = v.multiplier;
     name.oninput = () => { v.name = name.value; };
@@ -142,6 +149,11 @@ function renderVehicles() {
     return tr;
   }));
 }
+
+$('addVehicle').onclick = () => {
+  fare.vehicles.push({ id: `v${Date.now().toString(36)}`, name: 'รถคันใหม่', seats: 4, multiplier: 1 });
+  renderVehicles();
+};
 
 function validTiers() {
   const ts = fare.distanceTiers;

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tieredDistanceCharge, timeMultiplier, calculateFare } from '../js/pricing.js';
-import { computeCostPerKm, recommendRates, DEFAULT_COST_INPUTS } from '../js/cost.js';
+import { computeCostPerKm, recommendRates, blendedKwhRate, DEFAULT_COST_INPUTS } from '../js/cost.js';
 import { buildFareConfig } from '../js/config.js';
 
 const tiers = [{ upToKm: 30, rate: 10 }, { upToKm: 100, rate: 9 }, { upToKm: null, rate: 8 }];
@@ -21,6 +21,12 @@ test('tiered distance: zero km', () => {
 
 const cfg = buildFareConfig({
   perMinute: 2, distanceTiers: tiers, minFare: 100, returnPerKm: 4,
+}, {
+  charging: { rangeKm: 280, minutesPerStop: 30, billTime: false },
+  vehicles: [
+    { id: 'sedan', name: 'sedan', seats: 4, multiplier: 1.0 },
+    { id: 'van', name: 'van', seats: 10, multiplier: 1.6 },
+  ],
 });
 
 test('time multiplier: night wraps midnight, not stacked with peak', () => {
@@ -67,12 +73,30 @@ test('vehicle multiplier, wait and airport', () => {
   assert.equal(f.total, 720);
 });
 
-test('cost model with defaults is in a sane range', () => {
+test('EV charging stops: info only by default, billable when enabled', () => {
+  const t = { distanceKm: 300, durationMin: 240, vehicleId: 'sedan', datetime: noon };
+  const info = calculateFare(cfg, t);
+  assert.equal(info.chargeStops, 1);
+  assert.equal(info.chargeMinutes, 30);
+  const billed = calculateFare({ ...cfg, charging: { ...cfg.charging, billTime: true } }, t);
+  assert.equal(billed.total - info.total, 60); // 30 min × 2 ฿
+  assert.equal(calculateFare(cfg, { ...t, distanceKm: 280 }).chargeStops, 0);
+  assert.equal(calculateFare(cfg, { ...t, distanceKm: 300, roundTrip: true }).chargeStops, 2);
+});
+
+test('EV cost model (Omoda C5 EV defaults)', () => {
+  assert.equal(DEFAULT_COST_INPUTS.energyType, 'ev');
+  assert.ok(Math.abs(blendedKwhRate(DEFAULT_COST_INPUTS) - 4.35) < 1e-9); // 0.7×3.0 + 0.3×7.5
   const c = computeCostPerKm(DEFAULT_COST_INPUTS);
-  assert.ok(Math.abs(c.fuel - 2.5) < 1e-9);
-  assert.ok(Math.abs(c.depreciation - 1.8) < 1e-9);
-  assert.ok(c.total > 5 && c.total < 7, `total=${c.total}`);
+  assert.ok(Math.abs(c.energy - 0.696) < 1e-9);                       // 16/100 × 4.35
+  assert.ok(Math.abs(c.depreciation - 649000 * 0.7 / 200000) < 1e-9); // 2.2715
+  assert.ok(c.total > 4 && c.total < 5, `total=${c.total}`);
   const r = recommendRates(DEFAULT_COST_INPUTS);
-  assert.ok(r.distanceTiers[0].rate >= 8 && r.distanceTiers[0].rate <= 10);
+  assert.equal(r.distanceTiers[0].rate, 7);
   assert.equal(r.perMinute, 2.5);
+});
+
+test('fuel mode still supported', () => {
+  const c = computeCostPerKm({ ...DEFAULT_COST_INPUTS, energyType: 'fuel', fuelPrice: 35, kmPerLiter: 14 });
+  assert.ok(Math.abs(c.energy - 2.5) < 1e-9);
 });

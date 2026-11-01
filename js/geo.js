@@ -37,7 +37,7 @@ export function haversineKm(a, b) {
 
 /**
  * @returns {Promise<{distanceKm:number, durationMin:number, coords:[number,number][], estimated:boolean}>}
- * ถ้า OSRM ใช้ไม่ได้ จะประมาณจากระยะเส้นตรง × 1.35 (road factor) ที่ 35 km/h
+ * ถ้า OSRM ใช้ไม่ได้ จะประมาณจากระยะเส้นตรง × 1.35 (road factor) ที่ 25/40/70 km/h ตามระยะ
  */
 export async function getRoute(a, b) {
   try {
@@ -58,6 +58,8 @@ export async function getRoute(a, b) {
     };
   } catch {
     const km = haversineKm(a, b) * 1.35;
-    return { distanceKm: km, durationMin: (km / 35) * 60, coords: [[a.lat, a.lng], [b.lat, b.lng]], estimated: true };
+    // ความเร็วเฉลี่ยประมาณตามระยะ: ในเมือง → ชานเมือง → ทางหลวง
+    const kmh = km < 15 ? 25 : km < 60 ? 40 : 70;
+    return { distanceKm: km, durationMin: (km / kmh) * 60, coords: [[a.lat, a.lng], [b.lat, b.lng]], estimated: true };
   }
 }

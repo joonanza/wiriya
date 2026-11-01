@@ -16,6 +16,7 @@ for (const v of cfg.vehicles) {
   o.value = v.id; o.textContent = `${v.name}`;
   $('vehicle').append(o);
 }
+if (cfg.vehicles.length < 2) $('vehicle').closest('.field').hidden = true;
 const pad = (x) => String(x).padStart(2, '0');
 const now = new Date(Date.now() + 30 * 60000);
 $('datetime').value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
@@ -191,6 +192,7 @@ function renderQuote() {
       <span>เวลาประมาณ ${Math.round(f.min)} นาที</span>
       ${f.timeMultiplier.label ? `<span>${esc(f.timeMultiplier.label)} ×${f.timeMultiplier.multiplier}</span>` : ''}
     </div>
+    ${f.chargeStops ? `<div class="notice">ระยะทางเกินระยะวิ่งต่อชาร์จ ต้องแวะชาร์จ ${f.chargeStops} ครั้ง (ประมาณ +${f.chargeMinutes} นาที)</div>` : ''}
     <table class="breakdown">${rows}</table>
     ${state.route.estimated ? '<div class="notice">เชื่อมต่อระบบเส้นทางไม่ได้ จึงใช้ระยะประมาณจากเส้นตรง × 1.35 ราคาอาจคลาดเคลื่อน</div>' : ''}`;
   $('bookCard').hidden = false;
@@ -214,6 +216,7 @@ function bookingText() {
     `รถ: ${f.vehicle.name}`,
     extras && `เพิ่มเติม: ${extras}`,
     `ระยะทาง: ${f.km.toFixed(1)} km`,
+    f.chargeStops && `แวะชาร์จ: ${f.chargeStops} ครั้ง (~${f.chargeMinutes} นาที)`,
     `ราคาประเมิน: ${baht(f.total)}`,
     $('custNote').value && `หมายเหตุ: ${$('custNote').value}`,
   ].filter(Boolean).join('\n');

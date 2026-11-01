@@ -1,7 +1,9 @@
 // ===== Cost model: คำนวณต้นทุนจริงต่อกิโลเมตร แล้วแปลงเป็นอัตราค่าโดยสารที่แนะนำ =====
 //
-//   C_km = C_fuel + C_maint + C_depr + C_fixed                     [฿/km]
-//   C_fuel  = P_fuel / η                     (η = อัตราสิ้นเปลือง km/L)
+//   C_km = C_energy + C_maint + C_depr + C_fixed                   [฿/km]
+//   C_energy (น้ำมัน) = P_fuel / η                     (η = อัตราสิ้นเปลือง km/L)
+//   C_energy (EV)     = (E/100) × [s·P_home + (1−s)·P_dc]
+//                       E = kWh/100 km ที่ปลั๊ก (รวม charging loss), s = สัดส่วนชาร์จบ้าน
 //   C_maint = Σ (ค่าอะไหล่/บริการ_i ÷ รอบเปลี่ยน_i km)
 //   C_depr  = (ราคารถ − มูลค่าซาก) ÷ (อายุใช้งาน × km/ปี)
 //   C_fixed = (ประกัน + ภาษี/พ.ร.บ. + ค่าใช้จ่ายรายปีอื่น) ÷ km/ปี
@@ -9,41 +11,65 @@
 //   r_d (ราคาต่อ km) = C_km × (1 + ขาเปล่า%) × (1 + กำไร%)
 //   r_t (ราคาต่อนาที) = ค่าแรงคนขับที่ต้องการต่อชั่วโมง ÷ 60
 
-/** ค่าเริ่มต้น: รถเก๋ง 1.2 L (ระดับ Yaris Ativ / City) เติมแก๊สโซฮอล์ 95 — แก้ให้ตรงกับรถจริงในหน้า Admin */
+/**
+ * ค่าเริ่มต้น: Omoda C5 EV 2026 (Max+, ประกอบไทย) — แบต LFP 50.6 kWh, WLTP 359 km
+ * อัตราใช้ไฟ: 50.6 kWh ÷ 359 km ≈ 14.1 kWh/100 km ที่แบต → +~10% charging loss/ขับในเมือง ≈ 16 kWh/100 km ที่ปลั๊ก
+ * แก้ให้ตรงกับรถจริงได้ในหน้า Admin (ดูค่าเฉลี่ยจากหน้าปัด/แอปของรถหลังใช้งาน 1–2 สัปดาห์)
+ */
 export const DEFAULT_COST_INPUTS = Object.freeze({
-  vehicleName: 'รถเก๋ง 1.2 L (ตัวอย่าง)',
+  vehicleName: 'Omoda C5 EV 2026 (Max+)',
+  energyType: 'ev',       // 'ev' | 'fuel'
+  // --- EV ---
+  kwhPer100km: 16,        // kWh/100 km ที่ปลั๊ก
+  homeRate: 3.0,          // ฿/kWh ชาร์จบ้าน TOU off-peak (รวม Ft + VAT โดยประมาณ)
+  dcRate: 7.5,            // ฿/kWh ตู้ DC fast charge สาธารณะ
+  homeSharePct: 0.70,     // สัดส่วนพลังงานที่ชาร์จที่บ้าน
+  // --- น้ำมัน (ใช้เมื่อ energyType = 'fuel') ---
   fuelPrice: 35,          // ฿/L
-  kmPerLiter: 14,         // km/L (ขับผสมในเมือง)
-  carPrice: 600000,       // ฿
-  residualPct: 0.40,      // มูลค่าซากเมื่อครบอายุ (สัดส่วนของราคารถ)
-  years: 5,               // ปี
-  kmPerYear: 40000,       // km/ปี
-  insurancePerYear: 20000,      // ประกันชั้น 1 แบบเชิงพาณิชย์
-  taxCompulsoryPerYear: 2500,   // ภาษีรถ + พ.ร.บ.
+  kmPerLiter: 14,         // km/L
+  // --- ค่าเสื่อม ---
+  carPrice: 649000,       // ฿ (ราคาทางการ พ.ค. 2026)
+  residualPct: 0.30,      // EV จีนราคาตกเร็ว: สมมติเหลือ 30% เมื่อครบ 5 ปี/200,000 km
+  years: 5,
+  kmPerYear: 40000,
+  insurancePerYear: 25000,      // ประกันชั้น 1 EV แบบเชิงพาณิชย์ (EV แพงกว่ารถน้ำมัน)
+  taxCompulsoryPerYear: 1200,   // ภาษี EV (ลดหย่อน) + พ.ร.บ.
   otherPerYear: 6000,           // ค่าจอด, โทรศัพท์/เน็ต, ล้างรถ ฯลฯ
   maintenance: [
-    { name: 'น้ำมันเครื่อง + ไส้กรอง', cost: 1500, intervalKm: 10000 },
-    { name: 'ยาง 4 เส้น', cost: 12000, intervalKm: 50000 },
-    { name: 'ผ้าเบรก', cost: 3000, intervalKm: 40000 },
-    { name: 'เช็กระยะ/อื่น ๆ', cost: 6000, intervalKm: 20000 },
+    { name: 'ยาง 4 เส้น (215/55 R18)', cost: 16000, intervalKm: 40000 },
+    { name: 'เช็กระยะ (ไส้กรองแอร์, น้ำมันเบรก ฯลฯ)', cost: 2500, intervalKm: 20000 },
+    { name: 'ผ้าเบรก (regen ช่วยยืดอายุ)', cost: 3000, intervalKm: 60000 },
+    { name: 'แบต 12V / ใบปัดน้ำฝน / อื่น ๆ', cost: 4000, intervalKm: 60000 },
   ],
-  deadheadPct: 0.30,      // สัดส่วนระยะวิ่งรถเปล่า (ไปรับ/กลับ) ต่อระยะที่มีผู้โดยสาร
-  marginPct: 0.20,        // กำไรที่ต้องการบนต้นทุนรถ
-  driverHourly: 150,      // ค่าแรงคนขับที่ต้องการ ฿/ชม. (คิดผ่านอัตราต่อนาที)
-  returnFactor: 0.7,      // ทริปทางไกลขาเดียว: คิดค่าขากลับรถเปล่า = factor × C_km ต่อ km ที่เกินระยะ
+  deadheadPct: 0.30,
+  marginPct: 0.20,
+  driverHourly: 150,
+  returnFactor: 0.7,
 });
 
 const n = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
 
-/** @returns {{fuel:number, maintenance:number, depreciation:number, fixed:number, total:number}} ฿/km */
+/** ราคาพลังงานเฉลี่ยของ EV (฿/kWh) ตามสัดส่วนชาร์จบ้าน/DC */
+export const blendedKwhRate = (c) => {
+  const s = Math.min(1, Math.max(0, n(c.homeSharePct)));
+  return s * n(c.homeRate) + (1 - s) * n(c.dcRate);
+};
+
+export function energyCostPerKm(c) {
+  return c.energyType === 'fuel'
+    ? n(c.fuelPrice) / Math.max(0.1, n(c.kmPerLiter, 1))
+    : (n(c.kwhPer100km) / 100) * blendedKwhRate(c);
+}
+
+/** @returns {{energy:number, maintenance:number, depreciation:number, fixed:number, total:number}} ฿/km */
 export function computeCostPerKm(c) {
   const kmYear = Math.max(1, n(c.kmPerYear, 1));
-  const fuel = n(c.fuelPrice) / Math.max(0.1, n(c.kmPerLiter, 1));
+  const energy = energyCostPerKm(c);
   const maintenance = (c.maintenance || []).reduce(
     (s, m) => s + (n(m.intervalKm) > 0 ? n(m.cost) / n(m.intervalKm) : 0), 0);
   const depreciation = (n(c.carPrice) * (1 - n(c.residualPct))) / (Math.max(0.1, n(c.years, 1)) * kmYear);
   const fixed = (n(c.insurancePerYear) + n(c.taxCompulsoryPerYear) + n(c.otherPerYear)) / kmYear;
-  return { fuel, maintenance, depreciation, fixed, total: fuel + maintenance + depreciation + fixed };
+  return { energy, maintenance, depreciation, fixed, total: energy + maintenance + depreciation + fixed };
 }
 
 const round = (x, step) => Math.round(x / step) * step;
