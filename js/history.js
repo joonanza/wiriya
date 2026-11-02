@@ -85,7 +85,7 @@ function render() {
         <select data-act="status" aria-label="เปลี่ยนสถานะ">
           ${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${k === q.status ? 'selected' : ''}>${v.label}</option>`).join('')}
         </select>
-        <a class="btn ${q.status === 'request' ? 'primary' : ''}" href="index.html?quote=${encodeURIComponent(q.id)}">${q.status === 'request' ? 'เสนอราคา' : 'เปิด/แก้ไข'}</a>
+        <a class="btn ${q.status === 'request' ? 'primary' : ''}" href="quote.html?quote=${encodeURIComponent(q.id)}">${q.status === 'request' ? 'เสนอราคา' : 'เปิด/แก้ไข'}</a>
         ${q.pickup && q.dropoff ? `<a class="btn" target="_blank" rel="noopener" href="${mapsDirLink(q.pickup, q.dropoff)}">นำทาง</a>` : ''}
         <button type="button" data-act="delete" class="danger-text">ลบ</button>
       </div>

@@ -4,7 +4,7 @@ import { createTripPlanner } from './trip.js';
 import { computeCostPerKm } from './cost.js';
 import {
   $, esc, baht, toast, copySync, normalizePhone, phoneDisplay, fmtDateTime, shortPlace,
-  smsLink, waLink, lineShareLink, statusBadge,
+  smsLink, waLink, lineShareLink, statusBadge, mapsDirLink,
 } from './ui.js';
 
 const store = await requireDriver();
@@ -159,6 +159,7 @@ function quoteText() {
     `📅 ${dt}`,
     `🟢 รับ: ${shortPlace(st.pickup.name)}`,
     `🔴 ส่ง: ${shortPlace(st.dropoff.name)}`,
+    `🗺️ เส้นทาง: ${mapsDirLink(st.pickup, st.dropoff)}`,
     `🚗 ${f.vehicle.name} · ${f.km.toFixed(1)} km (~${Math.round(f.min)} นาที)`,
     extras && `➕ ${extras}`,
     f.chargeStops && `🔌 แวะชาร์จระหว่างทาง ${f.chargeStops} ครั้ง (~${f.chargeMinutes} นาที)`,
@@ -192,6 +193,8 @@ function updateSendLinks() {
     else { a.removeAttribute('href'); a.setAttribute('aria-disabled', 'true'); }
   }
   $('lineBtn').href = lineShareLink(text);
+  const st = planner.state;
+  if (st.pickup && st.dropoff) $('mapsBtn').href = mapsDirLink(st.pickup, st.dropoff);
   $('sendHint').textContent = okPhone
     ? 'SMS จะส่งจากเบอร์มือถือของคุณ · LINE จะให้เลือกแชทของลูกค้า'
     : 'ใส่เบอร์โทรลูกค้าเพื่อส่ง SMS / WhatsApp · LINE จะให้เลือกแชทของลูกค้า';
@@ -264,7 +267,7 @@ function renderEditBanner() {
   b.innerHTML = `
     <div>${statusBadge(editing.status)} ${editing.source === 'customer' ? 'คำขอจากลูกค้า' : 'ใบเสนอราคา'}
       · สร้าง ${esc(fmtDateTime(editing.created_at))}</div>
-    <a class="link-btn" href="index.html">+ ใบใหม่</a>`;
+    <a class="link-btn" href="quote.html">+ ใบใหม่</a>`;
 }
 
 // ================= เปิดจากลิงก์ (?quote= / ?customer=) =================

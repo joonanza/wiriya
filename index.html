@@ -3,132 +3,61 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>เสนอราคา · คนขับ</title>
+  <title>หน้าแรก · คนขับ</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="top">
-    <h1 id="bizName">เสนอราคา</h1>
+    <h1 id="bizName">หน้าแรก</h1>
     <nav>
-      <a href="index.html" aria-current="page">เสนอราคา</a>
+      <a href="index.html" aria-current="page">หน้าแรก</a>
+      <a href="quote.html">เสนอราคา</a>
       <a href="history.html">ประวัติ</a>
       <a href="customers.html">ลูกค้า</a>
+      <a href="dashboard.html">แดชบอร์ด</a>
       <a href="admin.html">ตั้งค่า</a>
     </nav>
   </header>
 
-  <main class="layout reorder driver">
-    <section>
-      <div class="edit-banner" id="editBanner" hidden></div>
-
-      <!-- ลูกค้า -->
-      <div class="card" id="customerCard">
-        <div class="card-head">
-          <h2>ลูกค้า</h2>
-          <button type="button" class="link-btn" id="clearCustomer">ล้าง / ลูกค้าใหม่</button>
-        </div>
-        <div class="field">
-          <label for="custName">ชื่อ</label>
-          <input id="custName" autocomplete="off" placeholder="พิมพ์ชื่อ เบอร์ หรือ LINE เพื่อค้นหาลูกค้าเก่า">
-          <ul class="suggest" id="custNameSuggest" hidden></ul>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label for="custPhone">เบอร์โทร</label>
-            <input id="custPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="08X-XXX-XXXX">
-            <ul class="suggest" id="custPhoneSuggest" hidden></ul>
-          </div>
-          <div class="field">
-            <label for="custLine">LINE ID</label>
-            <input id="custLine" autocomplete="off" autocapitalize="off">
-          </div>
-        </div>
-        <div id="custInfo" hidden></div>
+  <main class="narrow">
+    <section class="hero">
+      <div>
+        <div class="muted" id="today"></div>
+        <h2 class="hero-title" id="greeting">สวัสดีครับ</h2>
       </div>
-
-      <!-- เส้นทาง -->
-      <div class="card" id="routeCard">
-        <h2>เส้นทาง</h2>
-        <div class="field">
-          <label for="pickup"><span class="dot a"></span>จุดรับ</label>
-          <div class="place-input">
-            <input id="pickup" autocomplete="off" placeholder="ค้นหาสถานที่ หรือแตะบนแผนที่">
-            <button class="icon" id="gpsBtn" type="button" title="ใช้ตำแหน่งปัจจุบัน" aria-label="ใช้ตำแหน่งปัจจุบัน">📍</button>
-          </div>
-          <ul class="suggest" id="pickupSuggest" hidden></ul>
-        </div>
-        <div class="field">
-          <label for="dropoff"><span class="dot b"></span>จุดส่ง</label>
-          <div class="place-input">
-            <input id="dropoff" autocomplete="off" placeholder="ค้นหาสถานที่ หรือแตะบนแผนที่">
-            <button class="icon" id="swapBtn" type="button" title="สลับจุดรับ-ส่ง" aria-label="สลับจุดรับ-ส่ง">⇅</button>
-          </div>
-          <ul class="suggest" id="dropoffSuggest" hidden></ul>
-        </div>
-        <div class="row">
-          <div class="field"><label for="vehicle">ประเภทรถ</label><select id="vehicle"></select></div>
-          <div class="field"><label for="datetime">วัน-เวลารับ</label><input id="datetime" type="datetime-local"></div>
-        </div>
-        <div class="row">
-          <div class="field"><label for="toll">ค่าทางด่วน (฿)</label><input id="toll" type="number" min="0" step="5" value="0" inputmode="numeric"></div>
-          <div class="field"><label for="wait">ค่ารอ (ชั่วโมง)</label><input id="wait" type="number" min="0" step="0.5" value="0" inputmode="decimal"></div>
-        </div>
-        <label class="check"><input type="checkbox" id="roundTrip"> ไป-กลับ</label>
-        <label class="check"><input type="checkbox" id="airport"> รับ/ส่งสนามบิน</label>
-      </div>
-
-      <!-- ราคาที่คำนวณ -->
-      <div class="card" id="quoteCard">
-        <h2>ราคาที่คำนวณ</h2>
-        <div id="quote"><p class="empty">เลือกจุดรับและจุดส่งเพื่อดูราคา</p></div>
-      </div>
-
-      <!-- เสนอราคา + ส่ง -->
-      <div class="card" id="offerCard" hidden>
-        <h2>เสนอราคาให้ลูกค้า</h2>
-        <div class="field">
-          <label for="quoted">ราคาที่เสนอ (บาท)</label>
-          <div class="offer-row">
-            <input id="quoted" class="offer-input num" type="number" min="0" step="10" inputmode="numeric">
-            <button type="button" class="link-btn" id="resetQuoted" hidden>ใช้ราคาที่คำนวณ</button>
-          </div>
-          <div class="profit num" id="profit"></div>
-        </div>
-        <div class="field">
-          <label for="custNote">หมายเหตุถึงลูกค้า (ถ้ามี)</label>
-          <textarea id="custNote" rows="2" placeholder="เช่น รวมค่าทางด่วนแล้ว / มีที่วางกระเป๋า 2 ใบ"></textarea>
-        </div>
-        <div class="field">
-          <div class="card-head">
-            <label for="msgPreview">ข้อความที่จะส่ง (แก้ไขได้)</label>
-            <button type="button" class="link-btn" id="resetMsg" hidden>สร้างข้อความใหม่</button>
-          </div>
-          <textarea id="msgPreview" rows="9" class="msg-preview"></textarea>
-        </div>
-        <div class="send-grid">
-          <a class="btn primary" id="smsBtn">💬 ส่ง SMS</a>
-          <a class="btn line" id="lineBtn" target="_blank" rel="noopener">LINE</a>
-          <a class="btn wa" id="waBtn" target="_blank" rel="noopener">WhatsApp</a>
-          <button type="button" id="copyBtn">คัดลอก</button>
-        </div>
-        <p class="muted" id="sendHint"></p>
-        <div class="actions">
-          <button type="button" id="saveBtn">บันทึกโดยไม่ส่ง</button>
-        </div>
-      </div>
+      <a class="btn primary big-btn" href="quote.html">+ เสนอราคาใหม่</a>
     </section>
 
-    <section id="mapSection">
-      <div id="map" role="application" aria-label="แผนที่"></div>
-      <p class="map-hint">แตะบนแผนที่เพื่อปักจุดรับ แล้วแตะอีกครั้งเพื่อปักจุดส่ง ลากหมุดเพื่อปรับตำแหน่งได้</p>
-    </section>
+    <a class="card alert-card" id="requestAlert" href="history.html?status=request" hidden></a>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="card">
+      <div class="card-head"><h2>งานที่จะถึง</h2><a class="link-btn" href="history.html?status=confirmed">ดูทั้งหมด</a></div>
+      <div id="upcoming" class="list compact"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>รอลูกค้ายืนยัน</h2><a class="link-btn" href="history.html?status=sent">ดูทั้งหมด</a></div>
+      <div id="pending" class="list compact"></div>
+    </div>
+
+    <div class="card">
+      <h2>ลิงก์ให้ลูกค้าจอง</h2>
+      <p class="muted">ส่งลิงก์นี้ให้ลูกค้า แล้วคำขอจองจะเด้งเข้ามาในแอปนี้</p>
+      <div class="toolbar">
+        <input id="custLink" readonly>
+        <button type="button" id="shareLink">แชร์</button>
+      </div>
+      <div class="actions" id="notifyRow" hidden>
+        <button type="button" id="notifyBtn">🔔 เปิดการแจ้งเตือนบนมือถือ</button>
+      </div>
+      <p class="muted" id="notifyNote"></p>
+    </div>
   </main>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script type="module" src="js/driver.js"></script>
+  <script type="module" src="js/home.js"></script>
 </body>
 </html>

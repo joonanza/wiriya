@@ -27,7 +27,7 @@ jobs:
       - name: Assemble site
         run: |
           mkdir _site
-          cp -r index.html customer.html history.html customers.html admin.html css js _site/
+          cp -r index.html quote.html customer.html history.html customers.html dashboard.html admin.html css js _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

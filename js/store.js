@@ -48,6 +48,7 @@ export function customerStats(quotes) {
 // ---------------------------------------------------------------- Local
 const K_CUST = 'wiriya.customers.v1';
 const K_QUOTE = 'wiriya.quotes.v1';
+const K_EXP = 'wiriya.expenses.v1';
 const MAX_LOCAL_QUOTES = 500;
 
 function readArr(key) {
@@ -131,6 +132,23 @@ function createLocalStore() {
     async updateQuoteStatus(id, status) { return this.saveQuote({ id, status }); },
     async deleteQuote(id) { writeArr(K_QUOTE, readArr(K_QUOTE).filter((q) => q.id !== id)); },
     async countRequests() { return readArr(K_QUOTE).filter((q) => q.status === 'request').length; },
+
+    // ---- ค่าใช้จ่าย ----
+    async listExpenses({ limit = 1000 } = {}) {
+      return readArr(K_EXP).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.created_at || '').localeCompare(a.created_at || '')).slice(0, limit);
+    },
+    async saveExpense(input) {
+      const list = readArr(K_EXP);
+      const i = input.id ? list.findIndex((x) => x.id === input.id) : -1;
+      const saved = i >= 0 ? { ...list[i], ...input } : { ...input, id: uuid(), created_at: nowIso() };
+      if (i >= 0) list[i] = saved; else list.push(saved);
+      writeArr(K_EXP, list);
+      return clone(saved);
+    },
+    async deleteExpense(id) { writeArr(K_EXP, readArr(K_EXP).filter((x) => x.id !== id)); },
+
+    /** แจ้งเตือนคำขอใหม่แบบ real-time (โหมดในเครื่องไม่มีคำขอจากเครื่องอื่น) */
+    subscribeRequests() { return () => {}; },
 
     /** หน้าลูกค้า: โหมดเครื่องเดียวส่งคำขอข้ามเครื่องไม่ได้ */
     canSubmitRequest: false,
@@ -221,6 +239,24 @@ async function createSupabaseStore() {
     async countRequests() {
       const { count } = await sb.from('quotes').select('id', { count: 'exact', head: true }).eq('status', 'request');
       return count || 0;
+    },
+
+    async listExpenses({ limit = 1000 } = {}) {
+      return must(await sb.from('expenses').select('*').order('date', { ascending: false }).order('created_at', { ascending: false }).limit(limit));
+    },
+    async saveExpense(input) {
+      const { id, created_at, ...rest } = input;
+      if (id) return must(await sb.from('expenses').update(rest).eq('id', id).select().single());
+      return must(await sb.from('expenses').insert(rest).select().single());
+    },
+    async deleteExpense(id) { must(await sb.from('expenses').delete().eq('id', id)); },
+
+    subscribeRequests(onNew) {
+      const ch = sb.channel('new-requests')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'quotes', filter: 'status=eq.request' },
+          (payload) => onNew(payload.new))
+        .subscribe();
+      return () => sb.removeChannel(ch);
     },
 
     canSubmitRequest: true,

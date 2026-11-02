@@ -39,7 +39,7 @@ function render() {
       <div class="muted">ใบเสนอราคา ${st.quotes} ใบ${st.last ? ' · ล่าสุด ' + esc(fmtDateTime(st.last)) : ''}</div>
       ${c.note ? `<div class="muted">📝 ${esc(c.note)}</div>` : ''}
       <div class="item-actions">
-        <a class="btn primary" href="index.html?customer=${encodeURIComponent(c.id)}">เสนอราคา</a>
+        <a class="btn primary" href="quote.html?customer=${encodeURIComponent(c.id)}">เสนอราคา</a>
         ${c.phone ? `<a class="btn" href="sms:${esc(c.phone)}">SMS</a>` : ''}
         ${c.line_id ? `<a class="btn" target="_blank" rel="noopener" href="https://line.me/ti/p/~${encodeURIComponent(c.line_id)}">LINE</a>` : ''}
         <a class="btn" href="history.html?customer=${encodeURIComponent(c.id)}">ประวัติ</a>

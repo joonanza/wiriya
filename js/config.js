@@ -19,6 +19,7 @@ export function buildFareConfig(rates, overrides = {}) {
     returnTrip: { thresholdKm: 60, perKm: rates.returnPerKm },
     waitPerHour: 150,
     airportFee: 50,
+    showPriceToCustomer: false, // หน้าลูกค้า: แสดงราคาประเมินหรือไม่ (ปิด = คนขับแจ้งราคาเอง)
     // EV: ระยะใช้งานจริงต่อชาร์จ (เผื่อแบตสำรอง ~15%) → ใช้แจ้งจำนวนครั้งที่ต้องแวะชาร์จในทริปไกล
     charging: { rangeKm: 280, minutesPerStop: 30, billTime: false },
     vehicles: [

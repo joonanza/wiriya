@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>แดชบอร์ด</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>แดชบอร์ด</h1>
+    <nav>
+      <a href="index.html">หน้าแรก</a>
+      <a href="quote.html">เสนอราคา</a>
+      <a href="history.html">ประวัติ</a>
+      <a href="customers.html">ลูกค้า</a>
+      <a href="dashboard.html" aria-current="page">แดชบอร์ด</a>
+      <a href="admin.html">ตั้งค่า</a>
+    </nav>
+  </header>
+
+  <main class="narrow">
+    <div class="chips period" id="periods" role="tablist" aria-label="ช่วงเวลา"></div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="card">
+      <h2>รายได้รายเดือน (6 เดือนล่าสุด)</h2>
+      <div class="chart" id="chart"></div>
+      <details class="breakdown-wrap"><summary>ดูเป็นตาราง</summary><table class="breakdown num" id="chartTable"></table></details>
+    </div>
+
+    <div class="card">
+      <h2>ต้นทุนและกำไร</h2>
+      <p class="muted" id="costNote"></p>
+      <div class="cost-cols">
+        <div>
+          <h3>ประมาณจากโมเดลต้นทุนรถ</h3>
+          <table class="breakdown num" id="estTable"></table>
+        </div>
+        <div>
+          <h3>ค่าใช้จ่ายจริงที่บันทึก</h3>
+          <table class="breakdown num" id="actTable"></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>บันทึกค่าใช้จ่าย</h2>
+      <form id="expForm" class="exp-form">
+        <div class="row">
+          <div class="field"><label for="eDate">วันที่</label><input id="eDate" type="date" required></div>
+          <div class="field"><label for="eCat">ประเภท</label><select id="eCat"></select></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="eAmount">จำนวนเงิน (฿)</label><input id="eAmount" type="number" min="0" step="1" inputmode="decimal" required></div>
+          <div class="field"><label for="eOdo">เลขไมล์ (km, ถ้ามี)</label><input id="eOdo" type="number" min="0" step="1" inputmode="numeric"></div>
+        </div>
+        <div class="field"><label for="eNote">รายละเอียด</label><input id="eNote" placeholder="เช่น ชาร์จ PEA Volta 35 kWh / เปลี่ยนยาง 4 เส้น"></div>
+        <div class="actions"><button type="submit" class="primary">+ บันทึก</button></div>
+      </form>
+      <div id="expList" class="exp-list"></div>
+    </div>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="chart-tip" id="chartTip" hidden></div>
+  <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

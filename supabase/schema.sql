@@ -52,6 +52,19 @@ create table if not exists public.settings (
   updated_at  timestamptz not null default now()
 );
 
+-- ---------- ค่าใช้จ่ายจริง (ชาร์จไฟ, บำรุงรักษา, ยาง, ประกัน ฯลฯ) ----------
+create table if not exists public.expenses (
+  id           uuid primary key default gen_random_uuid(),
+  date         date not null default current_date,
+  category     text not null default 'other'
+               check (category in ('charge','maintenance','tires','insurance','toll','other')),
+  amount       numeric(10,2) not null check (amount >= 0),
+  odometer_km  numeric(9,1),
+  note         text not null default '',
+  created_at   timestamptz not null default now()
+);
+create index if not exists expenses_date_idx on public.expenses (date desc);
+
 -- ---------- updated_at อัตโนมัติ ----------
 create or replace function public.touch_updated_at() returns trigger
 language plpgsql as $$
@@ -79,6 +92,11 @@ create trigger settings_touch before update on public.settings
 alter table public.customers enable row level security;
 alter table public.quotes    enable row level security;
 alter table public.settings  enable row level security;
+alter table public.expenses  enable row level security;
+
+drop policy if exists driver_all_expenses on public.expenses;
+create policy driver_all_expenses on public.expenses
+  for all to authenticated using (true) with check (true);
 
 drop policy if exists driver_all_customers on public.customers;
 create policy driver_all_customers on public.customers
@@ -144,3 +162,16 @@ end $$;
 
 revoke all on function public.submit_booking_request(jsonb) from public;
 grant execute on function public.submit_booking_request(jsonb) to anon, authenticated;
+
+-- =====================================================================
+-- Realtime: แจ้งเตือนคนขับทันทีเมื่อมีคำขอใหม่ (เด้งในแอปขณะเปิดอยู่)
+-- =====================================================================
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'quotes'
+  ) then
+    alter publication supabase_realtime add table public.quotes;
+  end if;
+end $$;

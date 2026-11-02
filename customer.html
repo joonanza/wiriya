@@ -47,7 +47,7 @@
       </div>
 
       <div class="card" id="quoteCard">
-        <h2>ราคาประเมิน</h2>
+        <h2 id="quoteTitle">ราคาประเมิน</h2>
         <div id="quote"><p class="empty">เลือกจุดรับและจุดส่งเพื่อดูราคา</p></div>
       </div>
 
@@ -61,15 +61,20 @@
         </div>
         <div class="field"><label for="custNote">หมายเหตุ (จำนวนคน, สัมภาระ, เที่ยวบิน)</label><textarea id="custNote" rows="2"></textarea></div>
         <label class="check"><input type="checkbox" id="rememberMe" checked> จดจำข้อมูลของฉันในเครื่องนี้</label>
-        <div class="actions">
-          <button type="button" class="primary" id="submitBtn" hidden>ส่งคำขอจอง</button>
-          <a class="btn" id="lineBtn" target="_blank" rel="noopener">ส่งทาง LINE</a>
-          <button type="button" id="copyBtn">คัดลอกรายละเอียด</button>
+        <button type="button" class="primary big-btn" id="submitBtn" hidden>📨 ส่งคำขอจอง</button>
+        <div class="success" id="successBox" hidden></div>
+        <div class="actions" id="altActions">
+          <a class="btn" id="lineBtn" target="_blank" rel="noopener" hidden>ส่งทาง LINE</a>
+          <button type="button" id="copyBtn" hidden>คัดลอกรายละเอียด</button>
           <a class="btn" id="callBtn" hidden>โทร</a>
         </div>
         <p class="notice" id="lineHint" hidden></p>
-        <div class="success" id="successBox" hidden></div>
-        <p class="muted">ราคาเป็นการประเมินจากเส้นทาง คนขับจะยืนยันราคาสุดท้ายกับคุณอีกครั้ง</p>
+        <p class="muted" id="priceNote"></p>
+      </div>
+
+      <div class="card" id="myRequestsCard" hidden>
+        <h2>คำขอที่เคยส่ง</h2>
+        <div id="myRequests" class="my-requests"></div>
       </div>
     </section>
 

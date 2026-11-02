@@ -5,7 +5,7 @@ import { calculateFare } from './pricing.js';
 import { searchPlaces, reverseGeocode, getRoute } from './geo.js';
 import { $, esc, baht, bahtExact, toast, toLocalInput } from './ui.js';
 
-export function createTripPlanner(cfg, { onUpdate = () => {} } = {}) {
+export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true } = {}) {
   const state = { pickup: null, dropoff: null, route: null, fare: null, trip: null };
 
   // ---------- ตัวเลือก ----------
@@ -180,6 +180,17 @@ export function createTripPlanner(cfg, { onUpdate = () => {} } = {}) {
     const rows = f.lines.map((l) => `
       <tr><td>${esc(l.label)}${l.note ? `<span class="note">${esc(l.note)}</span>` : ''}</td>
       <td class="num">${bahtExact(Math.round(l.amount * 100) / 100)}</td></tr>`).join('');
+    if (!showPrice) {
+      box.innerHTML = `
+        <div class="stats num trip-summary">
+          <span>📏 ระยะทาง <b>${f.km.toFixed(1)} km</b></span>
+          <span>⏱️ เวลาประมาณ <b>${Math.round(f.min)} นาที</b></span>
+        </div>
+        ${f.chargeStops ? `<div class="notice">ทริปไกล อาจต้องแวะชาร์จรถ ${f.chargeStops} ครั้ง (ประมาณ +${f.chargeMinutes} นาที)</div>` : ''}
+`;
+      notify();
+      return;
+    }
     box.innerHTML = `
       <div class="total"><span>ราคาที่คำนวณ</span><span class="amount num">${baht(f.total)}</span></div>
       <div class="stats num">
