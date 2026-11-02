@@ -10,11 +10,25 @@
 </head>
 <body>
   <header class="top">
-    <h1>ตั้งค่า (Admin)</h1>
-    <nav><a href="index.html">คำนวณราคา</a><a href="admin.html" aria-current="page">ตั้งค่า (Admin)</a></nav>
+    <h1>ตั้งค่า</h1>
+    <nav>
+      <a href="index.html">เสนอราคา</a>
+      <a href="history.html">ประวัติ</a>
+      <a href="customers.html">ลูกค้า</a>
+      <a href="admin.html" aria-current="page">ตั้งค่า</a>
+    </nav>
   </header>
 
   <main>
+    <div class="card" style="margin-bottom:16px">
+      <h2>ลิงก์สำหรับลูกค้า</h2>
+      <p class="muted">ส่งลิงก์นี้ให้ลูกค้าประเมินราคาและส่งคำขอจองได้เอง (หน้าลูกค้าไม่มีเมนูของคนขับ)</p>
+      <div class="toolbar">
+        <input id="custLink" readonly>
+        <button type="button" id="copyCustLink">คัดลอก</button>
+        <a class="btn" id="openCustLink" target="_blank" rel="noopener">เปิด</a>
+      </div>
+    </div>
     <div class="layout">
       <!-- ===== 1. ต้นทุนรถ ===== -->
       <section>
@@ -166,7 +180,7 @@
         <button type="button" id="resetFare">คืนค่าเริ่มต้น</button>
         <button type="button" id="exportFare">ส่งออก JSON</button>
       </div>
-      <p class="muted">Prototype นี้เก็บค่าไว้ในเบราว์เซอร์เครื่องนี้ (localStorage) เท่านั้น ถ้าจะให้ลูกค้าเห็นเรทเดียวกัน ต้องย้ายไปเก็บที่ backend</p>
+      <p class="muted">เมื่อเชื่อมฐานข้อมูลแล้ว เรทที่บันทึกจะใช้กับลูกค้าทุกเครื่องทันที (ถ้ายังไม่เชื่อม จะเก็บในเครื่องนี้เท่านั้น)</p>
     </div>
   </main>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

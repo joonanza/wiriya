@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ประวัติใบเสนอราคา</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>ประวัติ</h1>
+    <nav>
+      <a href="index.html">เสนอราคา</a>
+      <a href="history.html" aria-current="page">ประวัติ</a>
+      <a href="customers.html">ลูกค้า</a>
+      <a href="admin.html">ตั้งค่า</a>
+    </nav>
+  </header>
+
+  <main class="narrow">
+    <div class="kpis" id="kpis"></div>
+
+    <div class="card">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="ค้นหาชื่อ เบอร์ หรือสถานที่">
+        <button type="button" id="refreshBtn" class="icon" title="โหลดใหม่" aria-label="โหลดใหม่">⟳</button>
+      </div>
+      <div class="chips" id="filters" role="tablist"></div>
+      <p class="muted" id="custFilter" hidden></p>
+    </div>
+
+    <div id="list" class="list"></div>
+    <div class="actions center"><button type="button" id="moreBtn" hidden>แสดงเพิ่ม</button></div>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="js/history.js"></script>
+</body>
+</html>

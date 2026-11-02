@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ฐานข้อมูลลูกค้า</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>ลูกค้า</h1>
+    <nav>
+      <a href="index.html">เสนอราคา</a>
+      <a href="history.html">ประวัติ</a>
+      <a href="customers.html" aria-current="page">ลูกค้า</a>
+      <a href="admin.html">ตั้งค่า</a>
+    </nav>
+  </header>
+
+  <main class="narrow">
+    <div class="card">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="ค้นหาชื่อ เบอร์ หรือ LINE ID">
+        <button type="button" class="primary" id="addBtn">+ เพิ่มลูกค้า</button>
+      </div>
+      <p class="muted" id="summary"></p>
+    </div>
+
+    <form class="card" id="form" hidden>
+      <h2 id="formTitle">เพิ่มลูกค้า</h2>
+      <input type="hidden" id="fId">
+      <div class="field"><label for="fName">ชื่อ</label><input id="fName" required></div>
+      <div class="row">
+        <div class="field"><label for="fPhone">เบอร์โทร</label><input id="fPhone" type="tel" inputmode="tel"></div>
+        <div class="field"><label for="fLine">LINE ID</label><input id="fLine" autocapitalize="off"></div>
+      </div>
+      <div class="field"><label for="fNote">บันทึก (เช่น ที่อยู่บ้าน, ชอบนั่งหน้า, มีสัตว์เลี้ยง)</label><textarea id="fNote" rows="2"></textarea></div>
+      <div class="actions">
+        <button type="submit" class="primary">บันทึก</button>
+        <button type="button" id="cancelBtn">ยกเลิก</button>
+      </div>
+    </form>
+
+    <div id="list" class="list"></div>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="js/customers.js"></script>
+</body>
+</html>

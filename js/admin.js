@@ -1,7 +1,6 @@
-import {
-  loadCostInputs, saveCostInputs, resetCostInputs,
-  loadFareConfig, saveFareConfig, resetFareConfig, buildFareConfig,
-} from './config.js';
+import { buildFareConfig } from './config.js';
+import { DEFAULT_COST_INPUTS } from './cost.js';
+import { requireDriver } from './auth.js';
 import { computeCostPerKm, recommendRates, blendedKwhRate } from './cost.js';
 import { calculateFare, estimateTripProfit } from './pricing.js';
 
@@ -9,8 +8,30 @@ const $ = (id) => document.getElementById(id);
 const fmt = (x, d = 2) => Number(x).toLocaleString('th-TH', { minimumFractionDigits: d, maximumFractionDigits: d });
 const baht0 = (x) => `${Math.round(x).toLocaleString('th-TH')} ฿`;
 
-let cost = loadCostInputs();
-let fare = loadFareConfig();
+const store = await requireDriver();
+let cost = await store.getCostInputs();
+let fare = await store.getFareConfig();
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+// บันทึกต้นทุนแบบหน่วงเวลา (ไม่ยิงฐานข้อมูลทุกครั้งที่พิมพ์)
+let costTimer;
+function saveCostDebounced() {
+  clearTimeout(costTimer);
+  costTimer = setTimeout(() => store.saveCostInputs(cost).catch((e) => toast(`บันทึกต้นทุนไม่สำเร็จ: ${e.message}`)), 800);
+}
+async function persistFare(msg) {
+  try { await store.saveFareConfig(fare); toast(msg); }
+  catch (e) { toast(`บันทึกไม่สำเร็จ: ${e.message}`); }
+}
+
+// ลิงก์สำหรับลูกค้า
+const custUrl = new URL('customer.html', location.href).href;
+$('custLink').value = custUrl;
+$('openCustLink').href = custUrl;
+$('copyCustLink').onclick = async () => {
+  try { await navigator.clipboard.writeText(custUrl); toast('คัดลอกลิงก์แล้ว'); }
+  catch { $('custLink').select(); toast('กดค้างที่ช่องเพื่อคัดลอก'); }
+};
 
 const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 const setPath = (o, p, v) => { const ks = p.split('.'); const last = ks.pop(); ks.reduce((a, k) => (a[k] ??= {}), o)[last] = v; };
@@ -45,7 +66,7 @@ function renderMaint() {
   }));
 }
 $('addMaint').onclick = () => { cost.maintenance.push({ name: '', cost: 0, intervalKm: 10000 }); renderMaint(); onCostChange(); };
-$('resetCost').onclick = () => { resetCostInputs(); cost = loadCostInputs(); bindCostForm(); onCostChange(); toast('คืนค่าต้นทุนเริ่มต้นแล้ว'); };
+$('resetCost').onclick = () => { cost = clone(DEFAULT_COST_INPUTS); bindCostForm(); onCostChange(); toast('คืนค่าต้นทุนเริ่มต้นแล้ว'); };
 
 const COST_PARTS = [
   ['energy', 'พลังงาน', '#2f8f63'],
@@ -86,7 +107,7 @@ function renderCost() {
     </table>`;
 }
 
-function onCostChange() { saveCostInputs(cost); renderCost(); renderSim(); }
+function onCostChange() { saveCostDebounced(); renderCost(); renderSim(); }
 
 $('applyRates').onclick = () => {
   const r = recommendRates(cost);
@@ -94,9 +115,8 @@ $('applyRates').onclick = () => {
   fare.distanceTiers = r.distanceTiers;
   fare.minFare = r.minFare;
   fare.returnTrip = { ...fare.returnTrip, perKm: r.returnPerKm };
-  saveFareConfig(fare);
   bindFareForm(); renderSim();
-  toast('นำเรทแนะนำไปใช้และบันทึกแล้ว');
+  persistFare('นำเรทแนะนำไปใช้และบันทึกแล้ว');
   $('fareForm').scrollIntoView({ behavior: 'smooth' });
 };
 
@@ -168,14 +188,14 @@ function validTiers() {
 $('saveFare').onclick = () => {
   const err = validTiers();
   if (err) { toast(err); return; }
-  toast(saveFareConfig(fare) ? 'บันทึกแล้ว' : 'บันทึกไม่สำเร็จ (เบราว์เซอร์บล็อก storage)');
+  persistFare(store.mode === 'supabase' ? 'บันทึกแล้ว ลูกค้าทุกเครื่องเห็นเรทใหม่' : 'บันทึกแล้ว (ในเครื่องนี้)');
 };
 $('resetFare').onclick = () => {
-  resetFareConfig();
+  const keepBusiness = fare.business;
   fare = buildFareConfig(recommendRates(cost));
-  saveFareConfig(fare);
+  fare.business = keepBusiness;
   bindFareForm(); renderSim();
-  toast('คืนค่าเริ่มต้น (คำนวณจากต้นทุนปัจจุบัน) แล้ว');
+  persistFare('คืนค่าเริ่มต้น (คำนวณจากต้นทุนปัจจุบัน) แล้ว');
 };
 $('exportFare').onclick = () => {
   const blob = new Blob([JSON.stringify({ fareConfig: fare, costInputs: cost }, null, 2)], { type: 'application/json' });

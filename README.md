@@ -18,21 +18,36 @@ npm test       # unit test ของ pricing engine และ cost model
 ตั้งค่าครั้งแรกครั้งเดียว: **Settings → Pages → Build and deployment → Source: GitHub Actions**
 จากนั้นเปิดได้ที่ `https://joonanza.github.io/wiriya/`
 
-| หน้า | หน้าที่ |
-|---|---|
-| `index.html` | หน้าลูกค้า: ค้นหาสถานที่, คลิก/ลากหมุดบนแผนที่, GPS, เลือกรถ/เวลา/ไป-กลับ/สนามบิน/ค่ารอ/ทางด่วน → ราคาพร้อม breakdown → ส่งจองทาง LINE / คัดลอก / โทร |
-| `admin.html` | 1) **ต้นทุนรถ** → ต้นทุน ฿/km และเรทแนะนำ 2) **ตั้งค่าราคา** ทั้งหมด 3) **ทดลองทริปและกำไร** |
+| หน้า | ใคร | หน้าที่ |
+|---|---|---|
+| `index.html` | คนขับ | **เสนอราคา**: เลือก/ค้นหาลูกค้าเก่า → ใส่เส้นทาง → ได้ราคา + กำไรโดยประมาณ → ปรับราคา → ส่งใบเสนอราคาทาง **SMS / LINE / WhatsApp / คัดลอก** (บันทึกอัตโนมัติ) |
+| `history.html` | คนขับ | **ประวัติ**: ใบเสนอราคาและคำขอจากลูกค้า, เปลี่ยนสถานะ (คำขอใหม่ → ส่งแล้ว → ยืนยัน → เสร็จสิ้น / ยกเลิก), สรุปรายได้เดือนนี้และอัตราปิดงาน |
+| `customers.html` | คนขับ | **ฐานข้อมูลลูกค้า**: ชื่อ เบอร์ LINE บันทึก, จำนวนงาน/ยอดรวม, เสนอราคาใหม่ได้ในคลิกเดียว |
+| `admin.html` | คนขับ | ต้นทุนรถ, ตั้งค่าเรทราคา, ลิงก์สำหรับลูกค้า |
+| `customer.html` | ลูกค้า | ประเมินราคาเอง, จดจำชื่อ/เบอร์/LINE ในเครื่อง, ส่งคำขอจองเข้าระบบ (เมื่อเชื่อมฐานข้อมูล) หรือส่งทาง LINE / โทร |
+
+### ฐานข้อมูล
+- ยังไม่ได้ตั้งค่า → **โหมดเก็บข้อมูลในเครื่อง** (localStorage) ใช้ได้ทันที แต่ข้อมูลอยู่แค่ในเบราว์เซอร์นั้น
+- ใส่ key ใน `js/backend-config.js` → **Supabase** (PostgreSQL + ล็อกอินคนขับ + Row Level Security)
+- วิธีตั้งค่า: [docs/backend-setup.md](docs/backend-setup.md) · schema: [supabase/schema.sql](supabase/schema.sql)
 
 ## โครงสร้างโค้ด
 
 ```
-js/pricing.js   pricing engine (pure function, test ได้ใน Node)
-js/cost.js      cost model: ต้นทุน/km → เรทแนะนำ
-js/config.js    ค่าเริ่มต้น + เก็บ/โหลดจาก localStorage
-js/geo.js       Nominatim (ค้นหาสถานที่) + OSRM (เส้นทาง) + fallback ระยะเส้นตรง
-js/app.js       หน้าลูกค้า (Leaflet map)
-js/admin.js     หน้า Admin
-docs/fare-structure.md   ที่มาของเรทราคาพร้อมตัวเลข
+js/store.js        data layer: API เดียวกันทั้งโหมด localStorage และ Supabase
+js/auth.js         ตรวจล็อกอินหน้าคนขับ + แถบสถานะ + ป้ายจำนวนคำขอใหม่
+js/trip.js         แผนที่ + ค้นหาสถานที่ + ตัวเลือก + คำนวณราคา (ใช้ร่วมหน้าคนขับ/ลูกค้า)
+js/driver.js       หน้าเสนอราคา
+js/history.js      หน้าประวัติ
+js/customers.js    หน้าลูกค้า
+js/customer.js     หน้าลูกค้า (ฝั่งลูกค้า)
+js/admin.js        หน้าตั้งค่า
+js/pricing.js      pricing engine (pure function)
+js/cost.js         cost model: ต้นทุน/km → เรทแนะนำ
+js/config.js       ค่าเริ่มต้นเรทราคา
+js/geo.js          Nominatim + OSRM + fallback
+js/ui.js           helper: เบอร์โทร, ลิงก์ SMS/WhatsApp/LINE, สถานะ ฯลฯ
+supabase/schema.sql
 ```
 
 ## สูตรราคา
@@ -47,9 +62,8 @@ EV: ถ้าทริปยาวเกินระยะวิ่งต่อ�
 
 ## ข้อจำกัดของ Prototype (ต้องแก้ก่อนใช้จริง)
 
-- **เรทราคาเก็บใน localStorage** ของเบราว์เซอร์ที่ตั้งค่าเท่านั้น ลูกค้าบนเครื่องอื่นจะเห็นค่าเริ่มต้น
-  → ต้องย้าย config และการคำนวณราคาไปไว้ที่ backend (เช่น Supabase + Edge Function) เพื่อไม่ให้ client แก้ราคาได้
-- **หน้า Admin ไม่มีรหัสผ่าน**
+- ยังไม่ได้เชื่อม Supabase: ข้อมูลและเรทราคาอยู่ในเครื่องที่ใช้เท่านั้น และหน้าคนขับไม่มีรหัสผ่าน
+- ราคาที่แสดงในหน้าลูกค้าคำนวณฝั่งเบราว์เซอร์ จึงเป็นแค่ "ราคาประเมิน" คนขับเป็นคนยืนยันราคาจริงเสมอ
 - **Nominatim / OSRM สาธารณะ** จำกัดการใช้งาน (~1 req/s) และ OSRM ไม่มีข้อมูลจราจร (ใช้ `trafficFactor` เผื่อแทน)
   → ใช้งานจริงควรเปลี่ยนเป็น Google Routes API หรือ Longdo Map แค่แก้ไฟล์ `js/geo.js` ไฟล์เดียว
 - ถ้าเชื่อมต่อ OSRM ไม่ได้ ระบบจะประมาณระยะทางจากเส้นตรง × 1.35 (ความเร็ว 25/40/70 km/h ตามระยะ) และแสดงคำเตือน
@@ -57,7 +71,7 @@ EV: ถ้าทริปยาวเกินระยะวิ่งต่อ�
 ## Roadmap
 
 1. ~~หน้าคำนวณราคา + ส่งจองทาง LINE~~ ✅
-2. Backend: เก็บ booking, ลูกค้า และ fare config, พร้อม Admin login
+2. ~~โหมดคนขับเสนอราคา + ฐานข้อมูลลูกค้า/ประวัติ + Supabase backend~~ ✅ (รอสร้างโปรเจกต์ Supabase)
 3. PromptPay QR (dynamic) + แจ้งเตือนผ่าน LINE Messaging API + LIFF
 4. ปฏิทินงานล่วงหน้า, รายงานรายได้/ต้นทุน, ประวัติลูกค้า
 

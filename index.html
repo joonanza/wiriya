@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>คำนวณค่าเดินทาง</title>
+  <title>เสนอราคา · คนขับ</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -11,18 +11,51 @@
 </head>
 <body>
   <header class="top">
-    <h1 id="bizName">คำนวณค่าเดินทาง</h1>
-    <nav><a href="index.html" aria-current="page">คำนวณราคา</a><a href="admin.html">ตั้งค่า (Admin)</a></nav>
+    <h1 id="bizName">เสนอราคา</h1>
+    <nav>
+      <a href="index.html" aria-current="page">เสนอราคา</a>
+      <a href="history.html">ประวัติ</a>
+      <a href="customers.html">ลูกค้า</a>
+      <a href="admin.html">ตั้งค่า</a>
+    </nav>
   </header>
 
-  <main class="layout reorder">
+  <main class="layout reorder driver">
     <section>
+      <div class="edit-banner" id="editBanner" hidden></div>
+
+      <!-- ลูกค้า -->
+      <div class="card" id="customerCard">
+        <div class="card-head">
+          <h2>ลูกค้า</h2>
+          <button type="button" class="link-btn" id="clearCustomer">ล้าง / ลูกค้าใหม่</button>
+        </div>
+        <div class="field">
+          <label for="custName">ชื่อ</label>
+          <input id="custName" autocomplete="off" placeholder="พิมพ์ชื่อ เบอร์ หรือ LINE เพื่อค้นหาลูกค้าเก่า">
+          <ul class="suggest" id="custNameSuggest" hidden></ul>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="custPhone">เบอร์โทร</label>
+            <input id="custPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="08X-XXX-XXXX">
+            <ul class="suggest" id="custPhoneSuggest" hidden></ul>
+          </div>
+          <div class="field">
+            <label for="custLine">LINE ID</label>
+            <input id="custLine" autocomplete="off" autocapitalize="off">
+          </div>
+        </div>
+        <div id="custInfo" hidden></div>
+      </div>
+
+      <!-- เส้นทาง -->
       <div class="card" id="routeCard">
         <h2>เส้นทาง</h2>
         <div class="field">
           <label for="pickup"><span class="dot a"></span>จุดรับ</label>
           <div class="place-input">
-            <input id="pickup" autocomplete="off" placeholder="ค้นหาสถานที่ หรือคลิกบนแผนที่">
+            <input id="pickup" autocomplete="off" placeholder="ค้นหาสถานที่ หรือแตะบนแผนที่">
             <button class="icon" id="gpsBtn" type="button" title="ใช้ตำแหน่งปัจจุบัน" aria-label="ใช้ตำแหน่งปัจจุบัน">📍</button>
           </div>
           <ul class="suggest" id="pickupSuggest" hidden></ul>
@@ -30,66 +63,72 @@
         <div class="field">
           <label for="dropoff"><span class="dot b"></span>จุดส่ง</label>
           <div class="place-input">
-            <input id="dropoff" autocomplete="off" placeholder="ค้นหาสถานที่ หรือคลิกบนแผนที่">
+            <input id="dropoff" autocomplete="off" placeholder="ค้นหาสถานที่ หรือแตะบนแผนที่">
             <button class="icon" id="swapBtn" type="button" title="สลับจุดรับ-ส่ง" aria-label="สลับจุดรับ-ส่ง">⇅</button>
           </div>
           <ul class="suggest" id="dropoffSuggest" hidden></ul>
         </div>
-
         <div class="row">
-          <div class="field">
-            <label for="vehicle">ประเภทรถ</label>
-            <select id="vehicle"></select>
-          </div>
-          <div class="field">
-            <label for="datetime">วัน-เวลารับ</label>
-            <input id="datetime" type="datetime-local">
-          </div>
+          <div class="field"><label for="vehicle">ประเภทรถ</label><select id="vehicle"></select></div>
+          <div class="field"><label for="datetime">วัน-เวลารับ</label><input id="datetime" type="datetime-local"></div>
         </div>
         <div class="row">
-          <div class="field">
-            <label for="toll">ค่าทางด่วน (฿)</label>
-            <input id="toll" type="number" min="0" step="5" value="0" inputmode="numeric">
-          </div>
-          <div class="field">
-            <label for="wait">ค่ารอ (ชั่วโมง)</label>
-            <input id="wait" type="number" min="0" step="0.5" value="0" inputmode="decimal">
-          </div>
+          <div class="field"><label for="toll">ค่าทางด่วน (฿)</label><input id="toll" type="number" min="0" step="5" value="0" inputmode="numeric"></div>
+          <div class="field"><label for="wait">ค่ารอ (ชั่วโมง)</label><input id="wait" type="number" min="0" step="0.5" value="0" inputmode="decimal"></div>
         </div>
         <label class="check"><input type="checkbox" id="roundTrip"> ไป-กลับ</label>
         <label class="check"><input type="checkbox" id="airport"> รับ/ส่งสนามบิน</label>
       </div>
 
+      <!-- ราคาที่คำนวณ -->
       <div class="card" id="quoteCard">
-        <h2>ราคาประเมิน</h2>
+        <h2>ราคาที่คำนวณ</h2>
         <div id="quote"><p class="empty">เลือกจุดรับและจุดส่งเพื่อดูราคา</p></div>
       </div>
 
-      <div class="card" id="bookCard" hidden>
-        <h2>จองรถ</h2>
-        <div class="row">
-          <div class="field"><label for="custName">ชื่อ</label><input id="custName" autocomplete="name"></div>
-          <div class="field"><label for="custPhone">เบอร์โทร</label><input id="custPhone" type="tel" autocomplete="tel" inputmode="tel"></div>
+      <!-- เสนอราคา + ส่ง -->
+      <div class="card" id="offerCard" hidden>
+        <h2>เสนอราคาให้ลูกค้า</h2>
+        <div class="field">
+          <label for="quoted">ราคาที่เสนอ (บาท)</label>
+          <div class="offer-row">
+            <input id="quoted" class="offer-input num" type="number" min="0" step="10" inputmode="numeric">
+            <button type="button" class="link-btn" id="resetQuoted" hidden>ใช้ราคาที่คำนวณ</button>
+          </div>
+          <div class="profit num" id="profit"></div>
         </div>
-        <div class="field"><label for="custNote">หมายเหตุ (จำนวนคน, สัมภาระ, เที่ยวบิน)</label><textarea id="custNote" rows="2"></textarea></div>
+        <div class="field">
+          <label for="custNote">หมายเหตุถึงลูกค้า (ถ้ามี)</label>
+          <textarea id="custNote" rows="2" placeholder="เช่น รวมค่าทางด่วนแล้ว / มีที่วางกระเป๋า 2 ใบ"></textarea>
+        </div>
+        <div class="field">
+          <div class="card-head">
+            <label for="msgPreview">ข้อความที่จะส่ง (แก้ไขได้)</label>
+            <button type="button" class="link-btn" id="resetMsg" hidden>สร้างข้อความใหม่</button>
+          </div>
+          <textarea id="msgPreview" rows="9" class="msg-preview"></textarea>
+        </div>
+        <div class="send-grid">
+          <a class="btn primary" id="smsBtn">💬 ส่ง SMS</a>
+          <a class="btn line" id="lineBtn" target="_blank" rel="noopener">LINE</a>
+          <a class="btn wa" id="waBtn" target="_blank" rel="noopener">WhatsApp</a>
+          <button type="button" id="copyBtn">คัดลอก</button>
+        </div>
+        <p class="muted" id="sendHint"></p>
         <div class="actions">
-          <a class="btn primary" id="lineBtn" target="_blank" rel="noopener">ส่งทาง LINE</a>
-          <button type="button" id="copyBtn">คัดลอกรายละเอียด</button>
-          <a class="btn" id="callBtn" hidden>โทร</a>
+          <button type="button" id="saveBtn">บันทึกโดยไม่ส่ง</button>
         </div>
-        <p class="notice" id="lineHint" hidden></p>
-        <p class="muted">ราคาเป็นการประเมินจากเส้นทาง ราคาจริงอาจต่างไปตามสภาพจราจร</p>
       </div>
     </section>
 
     <section id="mapSection">
       <div id="map" role="application" aria-label="แผนที่"></div>
-      <p class="map-hint">คลิกบนแผนที่เพื่อปักจุดรับ แล้วคลิกอีกครั้งเพื่อปักจุดส่ง ลากหมุดเพื่อปรับตำแหน่งได้</p>
+      <p class="map-hint">แตะบนแผนที่เพื่อปักจุดรับ แล้วแตะอีกครั้งเพื่อปักจุดส่ง ลากหมุดเพื่อปรับตำแหน่งได้</p>
     </section>
   </main>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/driver.js"></script>
 </body>
 </html>

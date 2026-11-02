@@ -1,0 +1,292 @@
+// ===== หน้าคนขับ: คำนวณราคา → ปรับราคา → ส่งใบเสนอราคาให้ลูกค้า (SMS / LINE / WhatsApp / คัดลอก) =====
+import { requireDriver } from './auth.js';
+import { createTripPlanner } from './trip.js';
+import { computeCostPerKm } from './cost.js';
+import {
+  $, esc, baht, toast, copySync, normalizePhone, phoneDisplay, fmtDateTime, shortPlace,
+  smsLink, waLink, lineShareLink, statusBadge,
+} from './ui.js';
+
+const store = await requireDriver();
+const cfg = await store.getFareConfig();
+const costInputs = await store.getCostInputs();
+const costPerKm = computeCostPerKm(costInputs).total;
+
+if (cfg.business?.name) { $('bizName').textContent = cfg.business.name; }
+
+let editing = null;                      // quote ที่กำลังแก้ไข (ถ้ามี)
+let customer = { id: null, phone: '' };  // ลูกค้าที่เลือกจากฐานข้อมูล
+let quotedManual = false;                // คนขับแก้ราคาเองแล้ว
+let msgManual = false;                   // คนขับแก้ข้อความเองแล้ว
+
+const planner = createTripPlanner(cfg, { onUpdate: refreshOffer });
+
+// ================= ลูกค้า =================
+function setupCustomerSearch(inputId) {
+  const input = $(inputId);
+  const list = $(`${inputId}Suggest`);
+  let timer, items = [];
+  const close = () => { list.hidden = true; };
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) { close(); return; }
+    timer = setTimeout(async () => {
+      try { items = await store.searchCustomers(q, 6); } catch { items = []; }
+      list.replaceChildren(...items.map((c) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<b>${esc(c.name || '(ไม่มีชื่อ)')}</b> <span class="muted">${esc(phoneDisplay(c.phone) || '')}${c.line_id ? ' · LINE ' + esc(c.line_id) : ''}</span>`;
+        li.addEventListener('mousedown', (e) => { e.preventDefault(); close(); selectCustomer(c); });
+        return li;
+      }));
+      list.hidden = items.length === 0;
+    }, 250);
+  });
+  input.addEventListener('blur', () => setTimeout(close, 150));
+}
+setupCustomerSearch('custName');
+setupCustomerSearch('custPhone');
+
+async function selectCustomer(c) {
+  customer = { id: c.id, phone: c.phone || '' };
+  $('custName').value = c.name || '';
+  $('custPhone').value = c.phone ? phoneDisplay(c.phone) : '';
+  $('custLine').value = c.line_id || '';
+  await renderCustomerInfo(c);
+  refreshMessage();
+}
+
+async function renderCustomerInfo(c) {
+  const box = $('custInfo');
+  if (!c?.id) { box.hidden = true; box.innerHTML = ''; return; }
+  let quotes = [];
+  try { quotes = await store.listQuotes({ customerId: c.id, limit: 30 }); } catch { /* ignore */ }
+  const trips = quotes.filter((q) => q.status === 'confirmed' || q.status === 'done');
+  const total = trips.reduce((s, q) => s + (Number(q.fare_quoted) || 0), 0);
+  const seen = new Set();
+  const routes = quotes.filter((q) => q.pickup && q.dropoff && q.id !== editing?.id).filter((q) => {
+    const k = `${q.pickup.lat.toFixed(4)},${q.pickup.lng.toFixed(4)}>${q.dropoff.lat.toFixed(4)},${q.dropoff.lng.toFixed(4)}`;
+    if (seen.has(k)) return false; seen.add(k); return true;
+  }).slice(0, 3);
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="cust-info">
+      <span class="badge st-confirmed">ลูกค้าเก่า</span>
+      เดินทาง ${trips.length} ครั้ง · รวม ${baht(total)}${quotes[0] ? ` · ล่าสุด ${esc(fmtDateTime(quotes[0].created_at))}` : ''}
+      ${c.note ? `<div class="muted">📝 ${esc(c.note)}</div>` : ''}
+    </div>
+    ${routes.length ? `<div class="recent-routes"><span class="muted">เส้นทางที่เคยใช้:</span>
+      ${routes.map((q, i) => `<button type="button" class="chip" data-route="${i}">${esc(shortPlace(q.pickup.name, 1))} → ${esc(shortPlace(q.dropoff.name, 1))}</button>`).join('')}
+    </div>` : ''}`;
+  box.querySelectorAll('[data-route]').forEach((b) => b.addEventListener('click', () => {
+    const q = routes[Number(b.dataset.route)];
+    planner.load({ pickup: q.pickup, dropoff: q.dropoff, options: q.options });
+    toast('ใส่เส้นทางเดิมแล้ว');
+  }));
+}
+
+$('custPhone').addEventListener('input', () => {
+  // เปลี่ยนเป็นเบอร์อื่น = ลูกค้าคนใหม่ ไม่เขียนทับคนเดิม
+  const p = normalizePhone($('custPhone').value);
+  if (customer.id && customer.phone && p && p !== customer.phone) {
+    customer = { id: null, phone: '' };
+    renderCustomerInfo(null);
+  }
+  refreshMessage();
+});
+for (const id of ['custName', 'custLine']) $(id).addEventListener('input', refreshMessage);
+
+$('clearCustomer').addEventListener('click', () => {
+  customer = { id: null, phone: '' };
+  for (const id of ['custName', 'custPhone', 'custLine']) $(id).value = '';
+  renderCustomerInfo(null);
+  refreshMessage();
+});
+
+// ================= ราคาที่เสนอ =================
+function quotedValue() {
+  const v = Number($('quoted').value);
+  return Number.isFinite(v) && v > 0 ? v : (planner.state.fare?.total || 0);
+}
+
+function refreshOffer(st) {
+  const f = st.fare;
+  $('offerCard').hidden = !f;
+  if (!f) return;
+  if (!quotedManual) $('quoted').value = f.total;
+  $('resetQuoted').hidden = !quotedManual;
+  renderProfit();
+  refreshMessage();
+}
+
+function renderProfit() {
+  const st = planner.state;
+  if (!st.fare) return;
+  const toll = st.trip.tollBaht || 0;
+  const carCost = costPerKm * st.fare.km * (1 + (costInputs.deadheadPct || 0));
+  const labor = (costInputs.driverHourly || 0) * st.fare.min / 60;
+  const profit = quotedValue() - toll - carCost - labor;
+  const diff = quotedValue() - st.fare.total;
+  $('profit').innerHTML = `
+    ต้นทุนรถ ~${baht(carCost)} · ค่าแรง ~${baht(labor)} ·
+    <b class="${profit < 0 ? 'neg' : 'pos'}">กำไร ~${baht(profit)}</b>
+    ${diff ? `<span class="muted">(${diff > 0 ? '+' : ''}${baht(diff)} จากราคาคำนวณ)</span>` : ''}`;
+}
+
+$('quoted').addEventListener('input', () => {
+  quotedManual = true;
+  $('resetQuoted').hidden = false;
+  renderProfit();
+  refreshMessage();
+});
+$('resetQuoted').addEventListener('click', () => {
+  quotedManual = false;
+  refreshOffer(planner.state);
+});
+
+// ================= ข้อความใบเสนอราคา =================
+function quoteText() {
+  const st = planner.state, f = st.fare, t = st.trip;
+  if (!f) return '';
+  const name = $('custName').value.trim();
+  const dt = t.datetime instanceof Date && !Number.isNaN(t.datetime.getTime()) ? fmtDateTime(t.datetime) : '-';
+  const extras = [t.roundTrip && 'ไป-กลับ', t.airport && 'รับ/ส่งสนามบิน', t.waitHours && `รอ ${t.waitHours} ชม.`].filter(Boolean).join(' · ');
+  const note = $('custNote').value.trim();
+  return [
+    `สวัสดีครับ${name ? 'คุณ' + name : ''} 🙏`,
+    `ใบเสนอราคา: ${cfg.business?.name || 'รถรับส่ง'}`,
+    '',
+    `📅 ${dt}`,
+    `🟢 รับ: ${shortPlace(st.pickup.name)}`,
+    `🔴 ส่ง: ${shortPlace(st.dropoff.name)}`,
+    `🚗 ${f.vehicle.name} · ${f.km.toFixed(1)} km (~${Math.round(f.min)} นาที)`,
+    extras && `➕ ${extras}`,
+    f.chargeStops && `🔌 แวะชาร์จระหว่างทาง ${f.chargeStops} ครั้ง (~${f.chargeMinutes} นาที)`,
+    '',
+    `💰 ราคา ${Math.round(quotedValue()).toLocaleString('th-TH')} บาท${t.tollBaht ? ' (รวมค่าทางด่วนแล้ว)' : ' (ไม่รวมค่าทางด่วน ถ้ามี)'}`,
+    note && `📝 ${note}`,
+    '',
+    'ตอบกลับ "ยืนยัน" เพื่อจองได้เลยครับ',
+    cfg.business?.phone ? `โทร ${cfg.business.phone}` : '',
+  ].filter((x) => x !== false && x !== 0 && x !== null && x !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function refreshMessage() {
+  if (!planner.state.fare) return;
+  if (!msgManual) $('msgPreview').value = quoteText();
+  $('resetMsg').hidden = !msgManual;
+  updateSendLinks();
+}
+
+$('msgPreview').addEventListener('input', () => { msgManual = true; $('resetMsg').hidden = false; updateSendLinks(); });
+$('resetMsg').addEventListener('click', () => { msgManual = false; refreshMessage(); });
+$('custNote').addEventListener('input', refreshMessage);
+
+function updateSendLinks() {
+  const text = $('msgPreview').value;
+  const phone = normalizePhone($('custPhone').value);
+  const okPhone = phone.length >= 9;
+  for (const [id, href] of [['smsBtn', okPhone ? smsLink(phone, text) : null], ['waBtn', okPhone ? waLink(phone, text) : null]]) {
+    const a = $(id);
+    if (href) { a.href = href; a.removeAttribute('aria-disabled'); }
+    else { a.removeAttribute('href'); a.setAttribute('aria-disabled', 'true'); }
+  }
+  $('lineBtn').href = lineShareLink(text);
+  $('sendHint').textContent = okPhone
+    ? 'SMS จะส่งจากเบอร์มือถือของคุณ · LINE จะให้เลือกแชทของลูกค้า'
+    : 'ใส่เบอร์โทรลูกค้าเพื่อส่ง SMS / WhatsApp · LINE จะให้เลือกแชทของลูกค้า';
+}
+
+// ================= บันทึก / ส่ง =================
+async function save({ status, channel }) {
+  const st = planner.state;
+  if (!st.fare) { toast('ยังไม่มีเส้นทาง'); return null; }
+  const name = $('custName').value.trim();
+  const phone = normalizePhone($('custPhone').value);
+  const line = $('custLine').value.trim();
+  try {
+    let cust = null;
+    if (phone || line) {
+      cust = await store.upsertCustomer({ id: customer.id || undefined, name, phone, line_id: line });
+      customer = { id: cust.id, phone: cust.phone || '' };
+    }
+    const dt = st.trip.datetime;
+    const keepStatus = editing && ['confirmed', 'done'].includes(editing.status);
+    editing = await store.saveQuote({
+      id: editing?.id,
+      customer_id: cust?.id ?? editing?.customer_id ?? null,
+      customer_name: name,
+      customer_phone: phone || null,
+      customer_line: line || null,
+      pickup: st.pickup,
+      dropoff: st.dropoff,
+      pickup_at: dt instanceof Date && !Number.isNaN(dt.getTime()) ? dt.toISOString() : null,
+      distance_km: Math.round(st.route.distanceKm * 100) / 100,
+      duration_min: Math.round(st.trip.durationMin * 10) / 10,
+      options: planner.readOptions(),
+      fare_calc: st.fare.total,
+      fare_quoted: Math.round(quotedValue()),
+      status: keepStatus ? editing.status : status,
+      source: editing?.source || 'driver',
+      channel: channel || editing?.channel || null,
+      note: $('custNote').value.trim(),
+    });
+    renderEditBanner();
+    return editing;
+  } catch (err) {
+    toast(`บันทึกไม่สำเร็จ: ${err.message}`);
+    return null;
+  }
+}
+
+const sendAndSave = (channel) => async (e) => {
+  if (e.currentTarget.getAttribute('aria-disabled') === 'true') { e.preventDefault(); toast('ใส่เบอร์โทรลูกค้าก่อน'); return; }
+  const saved = await save({ status: 'sent', channel });
+  if (saved) toast('บันทึกใบเสนอราคาแล้ว');
+};
+$('smsBtn').addEventListener('click', sendAndSave('sms'));
+$('waBtn').addEventListener('click', sendAndSave('whatsapp'));
+$('lineBtn').addEventListener('click', sendAndSave('line'));
+$('copyBtn').addEventListener('click', async () => {
+  copySync($('msgPreview').value);
+  toast('คัดลอกข้อความแล้ว');
+  await save({ status: 'sent', channel: 'copy' });
+});
+$('saveBtn').addEventListener('click', async () => {
+  const saved = await save({ status: editing?.status && editing.status !== 'request' ? editing.status : 'draft' });
+  if (saved) toast('บันทึกแล้ว');
+});
+
+function renderEditBanner() {
+  const b = $('editBanner');
+  if (!editing) { b.hidden = true; return; }
+  b.hidden = false;
+  b.innerHTML = `
+    <div>${statusBadge(editing.status)} ${editing.source === 'customer' ? 'คำขอจากลูกค้า' : 'ใบเสนอราคา'}
+      · สร้าง ${esc(fmtDateTime(editing.created_at))}</div>
+    <a class="link-btn" href="index.html">+ ใบใหม่</a>`;
+}
+
+// ================= เปิดจากลิงก์ (?quote= / ?customer=) =================
+const params = new URLSearchParams(location.search);
+if (params.get('quote')) {
+  const q = await store.getQuote(params.get('quote')).catch(() => null);
+  if (!q) toast('ไม่พบใบเสนอราคานี้');
+  else {
+    editing = q;
+    renderEditBanner();
+    $('custName').value = q.customer_name || '';
+    $('custPhone').value = q.customer_phone ? phoneDisplay(q.customer_phone) : '';
+    $('custLine').value = q.customer_line || '';
+    $('custNote').value = q.note || '';
+    if (q.customer_id) {
+      const c = await store.getCustomer(q.customer_id).catch(() => null);
+      if (c) { customer = { id: c.id, phone: c.phone || '' }; renderCustomerInfo(c); }
+    }
+    if (q.fare_quoted && q.source === 'driver') { quotedManual = true; $('quoted').value = q.fare_quoted; }
+    await planner.load(q);
+  }
+} else if (params.get('customer')) {
+  const c = await store.getCustomer(params.get('customer')).catch(() => null);
+  if (c) selectCustomer(c);
+}
