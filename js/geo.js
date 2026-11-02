@@ -60,7 +60,7 @@ export function normalizeNominatim(d) {
 }
 
 /** รวมผลหลายแหล่ง ตัดซ้ำ (ห่างกัน < 80 m หรือชื่อเดียวกันในระยะ 1 km) แล้วเรียงตามความใกล้ */
-export function mergeResults(lists, near, limit = 8) {
+export function mergeResults(lists, near, limit = 12) {
   const out = [];
   for (const r of lists.flat()) {
     if (!okCoord(r.lat, r.lng) || !r.title) continue;
@@ -79,9 +79,41 @@ export function mergeResults(lists, near, limit = 8) {
   return out.slice(0, limit);
 }
 
-async function photonSearch(q, near, signal) {
+// ---- คำย่อภาษาไทยที่คนพิมพ์บ่อย → คำเต็มที่ใช้ในแผนที่ ----
+const TH_ABBR = [
+  [/(^|\s)รพ\.?\s*/g, '$1โรงพยาบาล '],
+  [/(^|\s)รร\.?\s*/g, '$1โรงเรียน '],
+  [/(^|\s)ม\.\s*(?=\d)/g, '$1หมู่ '],            // ม.3 = หมู่ 3
+  [/(^|\s)ม\.\s*/g, '$1มหาวิทยาลัย '],
+  [/(^|\s)มหาลัย\s*/g, '$1มหาวิทยาลัย '],
+  [/(^|\s)บขส\.?\s*/g, '$1สถานีขนส่ง '],
+  [/(^|\s)ขนส่ง\s*/g, '$1สถานีขนส่ง '],
+  [/(^|\s)รถไฟ\s*/g, '$1สถานีรถไฟ '],
+  [/(^|\s)ซ\.\s*/g, '$1ซอย '],
+  [/(^|\s)ถ\.\s*/g, '$1ถนน '],
+  [/(^|\s)อ\.\s*/g, '$1อำเภอ '],
+  [/(^|\s)จ\.\s*/g, '$1จังหวัด '],
+  [/(^|\s)ต\.\s*/g, '$1ตำบล '],
+  [/(^|\s)นิคม\s*/g, '$1นิคมอุตสาหกรรม '],
+  [/(^|\s)ปั๊ม\s*/g, '$1สถานีบริการน้ำมัน '],
+  [/(^|\s)เซเว่น\s*/g, '$1เซเว่น อีเลฟเว่น '],
+  [/(^|\s)บิ๊กซี\s*/g, '$1บิ๊กซี '],
+  [/สนามบิน\s*/g, 'ท่าอากาศยาน '],
+];
+/** ขยายคำย่อ เช่น "รพ.ชลบุรี" → "โรงพยาบาล ชลบุรี" (ถ้าไม่มีคำย่อจะได้ค่าเดิม) */
+export function expandThaiQuery(q) {
+  let s = ` ${String(q || '').trim()} `;
+  for (const [re, rep] of TH_ABBR) s = s.replace(re, rep);
+  s = s.replace(/\s+/g, ' ').trim();
+  // "โรงพยาบาลโรงพยาบาล" ซ้ำจากคำที่พิมพ์เต็มอยู่แล้ว
+  s = s.replace(/(โรงพยาบาล|มหาวิทยาลัย|สถานีขนส่ง|ท่าอากาศยาน)\s+\1/g, '$1');
+  return s;
+}
+
+async function photonSearch(q, near, signal, { limit = 15, osmTag = '' } = {}) {
   const bias = near ? `&lat=${near.lat}&lon=${near.lng}&location_bias_scale=0.3` : '';
-  const res = await fetch(`${PHOTON}/api/?q=${encodeURIComponent(q)}&limit=8&bbox=${TH_BBOX}${bias}`, { signal });
+  const tag = osmTag ? `&osm_tag=${encodeURIComponent(osmTag)}` : '';
+  const res = await fetch(`${PHOTON}/api/?q=${encodeURIComponent(q)}&limit=${limit}&bbox=${TH_BBOX}${bias}${tag}`, { signal });
   if (!res.ok) throw new Error(`photon ${res.status}`);
   const data = await res.json();
   return (data.features || []).map(normalizePhoton).filter((r) => inThailand(r.lat, r.lng));
@@ -146,16 +178,21 @@ export async function searchPlaces(query, { signal, near, full = false } = {}) {
   const hit = cacheGet(key);
   if (hit) return hit;
 
+  // ค้นทั้งคำที่พิมพ์ และคำที่ขยายคำย่อแล้ว (ถ้าต่างกัน) พร้อมกัน
+  const expanded = expandThaiQuery(query);
+  const variants = [query, ...(expanded !== query.trim() ? [expanded] : [])];
   let photon = [];
   let photonFailed = false;
-  try { photon = await photonSearch(query, near, signal); } catch (e) {
-    if (e.name === 'AbortError') throw e;
-    photonFailed = true;
-  }
+  const settled = await Promise.allSettled(variants.map((v) => photonSearch(v, near, signal)));
+  if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+  for (const r of settled) if (r.status === 'fulfilled') photon.push(...r.value);
+  if (settled.every((r) => r.status === 'rejected')) photonFailed = true;
+  // คำที่ขยายแล้วมักตรงกว่า → เอาผลชุดนั้นขึ้นก่อน
+  if (variants.length > 1 && settled[1].status === 'fulfilled') photon = [...settled[1].value, ...(settled[0].value || [])];
   let nomi = [];
   let nomiFailed = false;
   if (full || photonFailed || photon.length < MIN_PHOTON_RESULTS) {
-    try { nomi = await nominatimSearch(query, near, signal); } catch (e) {
+    try { nomi = await nominatimSearch(expanded || query, near, signal); } catch (e) {
       if (e.name === 'AbortError') throw e;
       nomiFailed = true;
     }
@@ -248,4 +285,32 @@ export function collectRecentPlaces(trips, limit = 12) {
   });
   return [...map.values()].sort((a, b) => b.count - a.count || a.order - b.order).slice(0, limit)
     .map(({ lat, lng, name }) => ({ lat, lng, name }));
+}
+
+// ---------------------------------------------------------------- หมวดหมู่ใกล้ตัว
+export const PLACE_CATEGORIES = [
+  { id: 'airport', icon: '✈️', label: 'สนามบิน', q: 'ท่าอากาศยาน', tag: 'aeroway:aerodrome' },
+  { id: 'hospital', icon: '🏥', label: 'โรงพยาบาล', q: 'โรงพยาบาล', tag: 'amenity:hospital' },
+  { id: 'mall', icon: '🛍️', label: 'ห้าง', q: 'ห้างสรรพสินค้า', tag: 'shop:mall' },
+  { id: 'bus', icon: '🚌', label: 'ขนส่ง', q: 'สถานีขนส่ง', tag: 'amenity:bus_station' },
+  { id: 'train', icon: '🚆', label: 'สถานีรถไฟ', q: 'สถานีรถไฟ', tag: 'railway:station' },
+  { id: 'hotel', icon: '🏨', label: 'โรงแรม', q: 'โรงแรม', tag: 'tourism:hotel' },
+  { id: 'university', icon: '🎓', label: 'มหาวิทยาลัย', q: 'มหาวิทยาลัย', tag: 'amenity:university' },
+];
+
+/** สถานที่ตามหมวด เรียงจากใกล้ไปไกล (Photon กรองด้วย osm_tag + ให้น้ำหนักตำแหน่ง) */
+export async function searchCategory(catId, { near, signal, limit = 15 } = {}) {
+  const cat = PLACE_CATEGORIES.find((c) => c.id === catId);
+  if (!cat) return [];
+  const key = cacheKey('cat', catId, near, false);
+  const hit = cacheGet(key);
+  if (hit) return hit;
+  const found = await photonSearch(cat.q, near, signal, { limit, osmTag: cat.tag });
+  const out = mergeResults([found], null, limit);
+  if (near) {
+    out.forEach((r) => { r.distanceKm = haversineKm(near, r); });
+    out.sort((a, b) => a.distanceKm - b.distanceKm);
+  }
+  cacheSet(key, out);
+  return out;
 }

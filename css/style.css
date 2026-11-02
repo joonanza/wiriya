@@ -359,3 +359,10 @@ main.home { max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1
 .day-txt { display: grid; min-width: 0; }
 .day-txt .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spark-grid .card + .card { margin-top: 0; }
+.suggest li.sugg-cats { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; cursor: default; }
+.suggest li.sugg-cats:hover { background: none; }
+.suggest li.sugg-cats .chip { font-size: 12px; padding: 4px 9px; }
+.suggest li.sugg-more { color: var(--accent); font-weight: 600; font-size: 13px; text-align: center; border-top: 1px solid var(--border); margin-top: 4px; }
+.suggest { max-height: 380px; }
+.popular-grid td:nth-child(1) { width: 40%; }
+input.invalid { border-color: var(--danger); }

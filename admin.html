@@ -209,6 +209,19 @@
           <div class="actions"><button type="button" id="addVehicle">+ เพิ่มรถ</button></div>
         </div>
       </div>
+      <h3>📍 ศูนย์กลางพื้นที่ให้บริการ</h3>
+      <p class="muted">แผนที่จะเริ่มที่จุดนี้ และผลค้นหาสถานที่จะเรียงตามความใกล้จุดนี้ (ก่อนลูกค้าปักจุดรับ)</p>
+      <div class="row">
+        <div class="field"><label>ชื่อพื้นที่</label><input data-f="serviceArea.name" placeholder="เช่น ชลบุรี"></div>
+        <div class="field"><label>พิกัด / ลิงก์ Google Maps</label><input id="serviceAreaCoord" placeholder="13.3611, 100.9847"></div>
+      </div>
+      <h3>⭐ สถานที่ยอดนิยม (ให้ลูกค้าแตะเลือกได้ทันที)</h3>
+      <p class="muted">เช่น สนามบิน สถานีขนส่ง โรงพยาบาล นิคมอุตสาหกรรม ที่ลูกค้าใช้บ่อย · ช่องพิกัด: วางลิงก์ Google Maps หรือพิกัด เช่น <code>13.3611, 100.9847</code> · ⚠️ ทุกคนที่เปิดหน้าลูกค้าเห็นรายการนี้ อย่าใส่ที่อยู่บ้านลูกค้า</p>
+      <table class="grid popular-grid">
+        <thead><tr><th>ชื่อที่แสดง</th><th>พิกัด / ลิงก์ Google Maps</th><th></th></tr></thead>
+        <tbody id="popularRows"></tbody>
+      </table>
+      <div class="actions"><button type="button" id="addPopular">+ เพิ่มสถานที่</button></div>
       <div class="actions">
         <button type="button" class="primary" id="saveFare">บันทึก</button>
         <button type="button" id="resetFare">คืนค่าเริ่มต้น</button>

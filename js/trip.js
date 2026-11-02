@@ -2,13 +2,16 @@
 // ต้องมี element: pickup, dropoff, pickupSuggest, dropoffSuggest, gpsBtn, swapBtn, vehicle, datetime,
 //                toll, wait, roundTrip, airport, map, quote
 import { calculateFare } from './pricing.js';
-import { searchPlaces, reverseGeocode, getRoute, isShortMapsLink } from './geo.js';
+import { searchPlaces, reverseGeocode, getRoute, isShortMapsLink, searchCategory, PLACE_CATEGORIES, haversineKm } from './geo.js';
 import { $, esc, baht, bahtExact, toast, toLocalInput, shortPlace } from './ui.js';
 
 const join2 = (a, b) => [a, b].filter(Boolean).join(', ');
 
 export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true, recentPlaces = async () => [] } = {}) {
   const state = { pickup: null, dropoff: null, route: null, fare: null, trip: null };
+  const sa = cfg.serviceArea || {};
+  const serviceArea = Number.isFinite(Number(sa.lat)) && Number.isFinite(Number(sa.lng)) && sa.lat !== null
+    ? { lat: Number(sa.lat), lng: Number(sa.lng), zoom: Number(sa.zoom) || 11 } : { lat: 13.7563, lng: 100.5018, zoom: 11 };
 
   // ---------- ตัวเลือก ----------
   for (const v of cfg.vehicles) {
@@ -24,7 +27,7 @@ export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true, 
   let map, routeLine;
   const markers = {};
   if (hasMap) {
-    map = L.map('map').setView([13.7563, 100.5018], 11);
+    map = L.map('map').setView([serviceArea.lat, serviceArea.lng], serviceArea.zoom || 11);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
@@ -67,103 +70,161 @@ export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true, 
   }
 
   // ---------- ค้นหาสถานที่ ----------
-  // แตะช่อง → แสดงสถานที่ที่เคยใช้ · พิมพ์ ≥ 2 ตัว → ค้นจาก Photon + Nominatim (เรียงตามความใกล้) · วางลิงก์/พิกัด Google Maps ได้
+  // แตะช่อง → หมวดหมู่ใกล้ตัว + สถานที่ยอดนิยม + ที่เคยใช้
+  // พิมพ์ ≥ 2 ตัว → ค้นจาก Photon (+ คำย่อไทยที่ขยายแล้ว) และ Nominatim เมื่อเจอน้อย · ปุ่ม "ค้นหาละเอียดเพิ่ม"
   const near = () => {
     if (hasMap) { const c = map.getCenter(); return { lat: c.lat, lng: c.lng }; }
-    return state.pickup || { lat: 13.7563, lng: 100.5018 };
+    return state.pickup || { lat: serviceArea.lat, lng: serviceArea.lng };
   };
   let recentCache = null;
   const getRecent = async () => {
     if (!recentCache) { try { recentCache = (await recentPlaces()) || []; } catch { recentCache = []; } }
     return recentCache;
   };
+  const popular = (cfg.popularPlaces || []).filter((p) => p && p.name && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+    .map((p) => ({ lat: Number(p.lat), lng: Number(p.lng), name: p.name, title: p.name, subtitle: p.note || '' }));
   const kmLabel = (d) => (d == null ? '' : d < 1 ? `${Math.round(d * 1000)} m` : `${d < 10 ? d.toFixed(1) : Math.round(d)} km`);
   const titleOf = (it) => it.title || shortPlace(it.name, 1);
   const subOf = (it) => it.subtitle ?? shortPlace(String(it.name || '').split(',').slice(1).join(','), 3);
+  const ICON = { recent: '🕘', popular: '⭐', coords: '📍' };
+  const matchText = (it, t) => !t || `${it.name || ''} ${it.title || ''}`.toLowerCase().includes(t);
 
   function setupAutocomplete(which) {
     const input = $(which);
     const list = $(`${which}Suggest`);
-    let timer, ctrl, items = [], active = -1, seq = 0;
+    let timer, ctrl, active = -1, seq = 0;
+    let groups = [];   // [{ head, items: [...] }]
+    let items = [];    // รายการที่เลือกได้ทั้งหมด (เรียงตามที่แสดง)
+    let lastQuery = '', lastFull = false, showCats = false;
     const close = () => { list.hidden = true; active = -1; };
-    const render = (header) => {
-      const lis = items.map((it, i) => {
+
+    const render = () => {
+      items = groups.flatMap((g) => g.items);
+      const lis = [];
+      if (showCats) {
         const li = document.createElement('li');
-        li.className = `sugg ${i === active ? 'active' : ''}`;
-        const icon = it.source === 'recent' ? '🕘' : it.source === 'coords' ? '📍' : '📌';
-        li.innerHTML = `<span class="sugg-ico" aria-hidden="true">${icon}</span>
-          <span class="sugg-txt"><b>${esc(titleOf(it))}</b>${subOf(it) ? `<span class="muted">${esc(subOf(it))}</span>` : ''}</span>
-          ${it.distanceKm != null ? `<span class="sugg-dist muted">${kmLabel(it.distanceKm)}</span>` : ''}`;
-        li.addEventListener('mousedown', (e) => { e.preventDefault(); choose(i); });
-        return li;
-      });
-      if (header) {
-        const h = document.createElement('li');
-        h.className = 'sugg-head'; h.textContent = header;
-        lis.unshift(h);
+        li.className = 'sugg-cats';
+        li.innerHTML = PLACE_CATEGORIES.map((c) => `<button type="button" class="chip" data-cat="${c.id}">${c.icon} ${esc(c.label)}</button>`).join('');
+        li.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('mousedown', (e) => { e.preventDefault(); showCategory(b.dataset.cat); }));
+        lis.push(li);
+      }
+      let idx = 0;
+      for (const g of groups) {
+        if (!g.items.length && !g.empty) continue;
+        if (g.head) lis.push(Object.assign(document.createElement('li'), { className: 'sugg-head', textContent: g.head }));
+        if (!g.items.length && g.empty) lis.push(Object.assign(document.createElement('li'), { className: 'sugg-head', textContent: g.empty }));
+        for (const it of g.items) {
+          const i = idx++;
+          const li = document.createElement('li');
+          li.className = `sugg ${i === active ? 'active' : ''}`;
+          li.innerHTML = `<span class="sugg-ico" aria-hidden="true">${ICON[it.source] || it.icon || '📌'}</span>
+            <span class="sugg-txt"><b>${esc(titleOf(it))}</b>${subOf(it) ? `<span class="muted">${esc(subOf(it))}</span>` : ''}</span>
+            ${it.distanceKm != null ? `<span class="sugg-dist muted">${kmLabel(it.distanceKm)}</span>` : ''}`;
+          li.addEventListener('mousedown', (e) => { e.preventDefault(); choose(i); });
+          lis.push(li);
+        }
+      }
+      if (lastQuery && !lastFull && !showCats) {
+        const more = Object.assign(document.createElement('li'), { className: 'sugg-more', textContent: '🔍 ค้นหาละเอียดเพิ่ม (รวมที่อยู่ ซอย ถนน)' });
+        more.addEventListener('mousedown', (e) => { e.preventDefault(); doSearch(lastQuery, true); });
+        lis.push(more);
       }
       list.replaceChildren(...lis);
       list.hidden = lis.length === 0;
     };
+
     const choose = (i) => {
       const it = items[i]; if (!it) return;
       close();
       setPlace(which, it, it.source === 'coords' ? null : (it.name || join2(titleOf(it), subOf(it))));
       if (hasMap) map.setView([it.lat, it.lng], Math.max(map.getZoom(), 14));
     };
-    const showRecent = async (q = '') => {
+
+    const withDist = (arr) => { const n = near(); return arr.map((x) => ({ ...x, distanceKm: x.distanceKm ?? haversineKm(n, x) })); };
+
+    const showStart = async () => {
+      lastQuery = ''; showCats = true; active = -1;
       const recent = await getRecent();
-      const t = q.trim().toLowerCase();
-      items = recent.filter((r) => !t || String(r.name || '').toLowerCase().includes(t)).slice(0, t ? 3 : 6)
-        .map((r) => ({ ...r, source: 'recent', distanceKm: null }));
-      active = -1;
-      render(items.length && !t ? 'สถานที่ที่เคยใช้' : null);
+      const popKeys = new Set(popular.map((p) => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`));
+      groups = [
+        { head: '⭐ สถานที่ยอดนิยม', items: withDist(popular).map((x) => ({ ...x, source: 'popular' })) },
+        { head: '🕘 สถานที่ที่เคยใช้', items: recent.filter((r) => !popKeys.has(`${r.lat.toFixed(3)},${r.lng.toFixed(3)}`)).slice(0, 5).map((r) => ({ ...r, source: 'recent', distanceKm: null })) },
+      ];
+      render();
     };
-    input.addEventListener('focus', () => { if (input.value.trim().length < 2 || input.value === state[which]?.name) showRecent(''); });
-    input.addEventListener('input', () => {
-      clearTimeout(timer);
-      const q = input.value.trim();
-      if (isShortMapsLink(q)) {
-        items = []; render();
-        toast('ลิงก์ย่อ maps.app.goo.gl อ่านพิกัดไม่ได้ ให้เปิดลิงก์ใน Google Maps แล้วคัดลอกพิกัด (กดค้างที่หมุด) มาวางแทน');
-        return;
+
+    async function showCategory(catId) {
+      const cat = PLACE_CATEGORIES.find((c) => c.id === catId);
+      const my = ++seq;
+      showCats = true; lastQuery = '';
+      groups = [{ head: `${cat.icon} ${cat.label}ใกล้แผนที่ (กำลังค้นหา…)`, items: [] }];
+      render();
+      ctrl?.abort(); ctrl = new AbortController();
+      try {
+        const found = await searchCategory(catId, { near: near(), signal: ctrl.signal });
+        if (my !== seq) return;
+        groups = [{ head: `${cat.icon} ${cat.label}ใกล้แผนที่`, items: found.map((x) => ({ ...x, icon: cat.icon })), empty: `ไม่พบ${cat.label}ในบริเวณนี้ ลองเลื่อนแผนที่หรือพิมพ์ชื่อ` }];
+        render();
+      } catch (err) {
+        if (err.name !== 'AbortError') toast(err.message || 'ค้นหาไม่สำเร็จ');
       }
-      if (q.length < 2) { showRecent(''); return; }
-      // แสดงสถานที่ที่เคยใช้ที่ตรงกันก่อน ระหว่างรอผลค้นหา
-      showRecent(q);
-      timer = setTimeout(() => doSearch(q, false), 400);
-    });
+    }
+
+    const quickMatches = async (q) => {
+      const t = q.trim().toLowerCase();
+      const recent = await getRecent();
+      return [
+        ...withDist(popular).filter((p) => matchText(p, t)).map((x) => ({ ...x, source: 'popular' })),
+        ...recent.filter((r) => matchText(r, t)).slice(0, 3).map((r) => ({ ...r, source: 'recent', distanceKm: null })),
+      ];
+    };
+
     async function doSearch(q, full) {
       const my = ++seq;
       ctrl?.abort(); ctrl = new AbortController();
       list.classList.add('loading');
       try {
-        const found = await searchPlaces(q, { signal: ctrl.signal, near: near(), full });
+        const [quick, found] = await Promise.all([quickMatches(q), searchPlaces(q, { signal: ctrl.signal, near: near(), full })]);
         if (my !== seq) return;
-        const recent = items.filter((x) => x.source === 'recent');
-        items = [...recent, ...found].slice(0, 9);
-        active = -1;
+        lastQuery = q; lastFull = full; showCats = false; active = -1;
+        groups = [
+          { head: quick.length ? 'ตรงกับที่บันทึกไว้' : '', items: quick },
+          { head: quick.length && found.length ? 'ผลการค้นหา' : '', items: found,
+            empty: full ? 'ไม่พบสถานที่ ลองพิมพ์ชื่ออื่น ชื่อถนน หรือแตะบนแผนที่' : '' },
+        ];
+        if (!quick.length && !found.length && !full) groups = [{ head: 'ยังไม่พบ ลองกด "ค้นหาละเอียดเพิ่ม" ด้านล่าง', items: [] , empty: ' ' }];
         render();
-        if (!items.length) {
-          list.replaceChildren(Object.assign(document.createElement('li'), {
-            className: 'sugg-head',
-            textContent: full ? 'ไม่พบสถานที่ ลองพิมพ์ชื่ออื่น ชื่อถนน หรือแตะบนแผนที่' : 'ยังไม่พบ กด Enter / ค้นหา เพื่อค้นแบบละเอียด',
-          }));
-          list.hidden = false;
-        }
       } catch (err) {
         if (err.name !== 'AbortError') toast(err.message || 'ค้นหาไม่สำเร็จ');
       } finally { list.classList.remove('loading'); }
     }
+
+    input.addEventListener('focus', () => { if (input.value.trim().length < 2 || input.value === state[which]?.name) showStart(); });
+    input.addEventListener('input', async () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (isShortMapsLink(q)) {
+        groups = []; showCats = false; lastQuery = ''; render();
+        toast('ลิงก์ย่อ maps.app.goo.gl อ่านพิกัดไม่ได้ ให้เปิดลิงก์ใน Google Maps แล้วคัดลอกพิกัด (กดค้างที่หมุด) มาวางแทน');
+        return;
+      }
+      if (q.length < 2) { showStart(); return; }
+      // ระหว่างรอผล แสดงสถานที่ยอดนิยม/ที่เคยใช้ที่ตรงกันก่อน
+      const quick = await quickMatches(q);
+      if (input.value.trim() === q) { showCats = false; lastQuery = ''; groups = [{ head: quick.length ? 'ตรงกับที่บันทึกไว้' : '', items: quick }]; render(); }
+      timer = setTimeout(() => doSearch(q, false), 400);
+    });
     input.addEventListener('keydown', (e) => {
-      const hasResults = items.some((x) => x.source !== 'recent');
-      if (e.key === 'Enter' && !hasResults && input.value.trim().length >= 2) {
-        e.preventDefault(); clearTimeout(timer); doSearch(input.value.trim(), true); return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!list.hidden && active >= 0) { choose(active); return; }
+        const q = input.value.trim();
+        if (q.length >= 2) { clearTimeout(timer); doSearch(q, true); }   // Enter = ค้นหาแบบละเอียด
+        return;
       }
       if (list.hidden) return;
       if (e.key === 'ArrowDown') { active = Math.min(items.length - 1, active + 1); render(); e.preventDefault(); }
       else if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); render(); e.preventDefault(); }
-      else if (e.key === 'Enter') { choose(active < 0 ? 0 : active); e.preventDefault(); }
       else if (e.key === 'Escape') close();
     });
     input.addEventListener('blur', () => setTimeout(close, 150));

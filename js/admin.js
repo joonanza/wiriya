@@ -1,6 +1,7 @@
 import { buildFareConfig } from './config.js';
 import { DEFAULT_COST_INPUTS } from './cost.js';
 import { requireDriver } from './auth.js';
+import { parseCoordinates } from './geo.js';
 import { esc } from './ui.js';
 import { computeCostPerKm, recommendRates, blendedKwhRate } from './cost.js';
 import { calculateFare, estimateTripProfit } from './pricing.js';
@@ -194,7 +195,16 @@ function bindFareForm() {
       .map((s) => s.split('-').map(Number)).filter((w) => w.length === 2 && w.every(Number.isFinite));
     renderSim();
   };
-  renderTiers(); renderVehicles();
+  renderTiers(); renderVehicles(); renderPopular();
+  fare.serviceArea ||= { name: '', lat: null, lng: null, zoom: 11 };
+  $('serviceAreaCoord').value = fare.serviceArea.lat != null ? `${fare.serviceArea.lat}, ${fare.serviceArea.lng}` : '';
+  $('serviceAreaCoord').onchange = () => {
+    const c = parseCoordinates($('serviceAreaCoord').value);
+    if (!c) { $('serviceAreaCoord').classList.add('invalid'); toast('อ่านพิกัดไม่ได้'); return; }
+    $('serviceAreaCoord').classList.remove('invalid');
+    fare.serviceArea.lat = Math.round(c.lat * 1e6) / 1e6; fare.serviceArea.lng = Math.round(c.lng * 1e6) / 1e6;
+    $('serviceAreaCoord').value = `${fare.serviceArea.lat}, ${fare.serviceArea.lng}`;
+  };
 }
 
 function renderTiers() {
@@ -215,6 +225,29 @@ $('addTier').onclick = () => {
   fare.distanceTiers.push({ upToKm: null, rate: last ? last.rate : 8 });
   renderTiers(); renderSim();
 };
+
+function renderPopular() {
+  fare.popularPlaces ||= [];
+  $('popularRows').replaceChildren(...fare.popularPlaces.map((p, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input placeholder="เช่น สถานีขนส่งชลบุรี"></td><td><input placeholder="13.3611, 100.9847 หรือวางลิงก์"></td>
+      <td><button type="button" class="icon" aria-label="ลบ">✕</button></td>`;
+    const [name, coord] = tr.querySelectorAll('input');
+    name.value = p.name || '';
+    coord.value = Number.isFinite(Number(p.lat)) && p.lat !== null && p.lat !== '' ? `${p.lat}, ${p.lng}` : '';
+    name.oninput = () => { p.name = name.value.trim(); };
+    coord.onchange = () => {
+      const c = parseCoordinates(coord.value);
+      if (!c) { coord.classList.add('invalid'); toast('อ่านพิกัดไม่ได้ วางพิกัด เช่น 13.3611, 100.9847 หรือลิงก์ Google Maps แบบยาว'); return; }
+      coord.classList.remove('invalid');
+      p.lat = Math.round(c.lat * 1e6) / 1e6; p.lng = Math.round(c.lng * 1e6) / 1e6;
+      coord.value = `${p.lat}, ${p.lng}`;
+    };
+    tr.querySelector('button').onclick = () => { fare.popularPlaces.splice(i, 1); renderPopular(); };
+    return tr;
+  }));
+}
+$('addPopular').onclick = () => { fare.popularPlaces ||= []; fare.popularPlaces.push({ name: '', lat: null, lng: null }); renderPopular(); };
 
 function renderVehicles() {
   $('vehicleRows').replaceChildren(...fare.vehicles.map((v, i) => {
@@ -249,6 +282,8 @@ function validTiers() {
 $('saveFare').onclick = () => {
   const err = validTiers();
   if (err) { toast(err); return; }
+  const bad = (fare.popularPlaces || []).filter((p) => !p.name || !Number.isFinite(Number(p.lat)) || p.lat === null);
+  if (bad.length) { toast('สถานที่ยอดนิยมบางรายการยังไม่มีชื่อหรือพิกัด กรอกให้ครบหรือกดลบก่อน'); return; }
   persistFare(store.mode === 'supabase' ? 'บันทึกแล้ว ลูกค้าทุกเครื่องเห็นเรทใหม่' : 'บันทึกแล้ว (ในเครื่องนี้)');
 };
 $('resetFare').onclick = () => {

@@ -73,3 +73,48 @@ test('collectRecentPlaces counts frequency and dedupes ~100 m', () => {
   assert.equal(r[1].name, 'สนามบินสุวรรณภูมิ');
   assert.equal(r.length, 2);            // ตัด "กำลังค้นหา…"
 });
+
+import { expandThaiQuery, PLACE_CATEGORIES, searchCategory, searchPlaces, _clearGeoCache } from '../js/geo.js';
+
+test('expandThaiQuery: common Thai abbreviations, moo vs university', () => {
+  assert.equal(expandThaiQuery('รพ.ชลบุรี'), 'โรงพยาบาล ชลบุรี');
+  assert.equal(expandThaiQuery('ม.บูรพา'), 'มหาวิทยาลัย บูรพา');
+  assert.equal(expandThaiQuery('99 ม.3 ต.นาป่า'), '99 หมู่ 3 ตำบล นาป่า');
+  assert.equal(expandThaiQuery('บขส ชลบุรี'), 'สถานีขนส่ง ชลบุรี');
+  assert.equal(expandThaiQuery('ซ.13 ถ.สุขุมวิท'), 'ซอย 13 ถนน สุขุมวิท');
+  assert.equal(expandThaiQuery('สนามบินสุวรรณภูมิ'), 'ท่าอากาศยาน สุวรรณภูมิ');
+  assert.equal(expandThaiQuery('เซ็นทรัล'), 'เซ็นทรัล');
+});
+
+test('searchPlaces queries both raw and expanded text, expanded results first', async () => {
+  _clearGeoCache();
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    const q = new URL(url).searchParams.get('q');
+    const mk = (name, lng) => ({ geometry: { coordinates: [lng, 13.36] }, properties: { name } });
+    if (q === 'โรงพยาบาล ชลบุรี') return Response.json({ features: [mk('โรงพยาบาลชลบุรี', 100.98), mk('โรงพยาบาลสมิติเวช ชลบุรี', 100.99), mk('โรงพยาบาลกรุงเทพ ชลบุรี', 101.0)] });
+    return Response.json({ features: [mk('ร้าน รพ.ชลบุรี', 100.95)] });
+  };
+  const r = await searchPlaces('รพ.ชลบุรี', { near: { lat: 13.36, lng: 100.98 } });
+  assert.equal(urls.filter((u) => u.includes('photon')).length, 2);
+  assert.equal(urls.filter((u) => u.includes('nominatim')).length, 0);
+  assert.equal(r[0].title, 'โรงพยาบาลชลบุรี');
+  assert.equal(r.length, 4);
+  assert.ok(urls.every((u) => !u.includes('photon') || u.includes('limit=15')));
+});
+
+test('searchCategory filters by OSM tag and sorts nearest first', async () => {
+  _clearGeoCache();
+  let seen = '';
+  globalThis.fetch = async (url) => {
+    seen = String(url);
+    const f = (name, lat, lng) => ({ geometry: { coordinates: [lng, lat] }, properties: { name } });
+    return Response.json({ features: [f('ไกล', 13.9, 100.6), f('ใกล้', 13.37, 100.99), f('กลาง', 13.5, 100.9)] });
+  };
+  const r = await searchCategory('hospital', { near: { lat: 13.36, lng: 100.98 } });
+  assert.match(seen, /osm_tag=amenity%3Ahospital/);
+  assert.deepEqual(r.map((x) => x.title), ['ใกล้', 'กลาง', 'ไกล']);
+  assert.ok(PLACE_CATEGORIES.length >= 6);
+  assert.deepEqual(await searchCategory('nope'), []);
+});
