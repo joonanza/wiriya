@@ -152,6 +152,11 @@ function createLocalStore() {
       return [{ ok: false, label: 'เชื่อมต่อ Supabase', detail: this.connectionError || 'ยังไม่ได้ใส่ URL/key ใน js/backend-config.js' }];
     },
     async notifyLine() { return { skipped: true }; },
+    canConfirmLinks: false,
+    async getQuoteByToken() { throw new Error('ต้องเชื่อมฐานข้อมูลก่อน'); },
+    async respondToQuote() { throw new Error('ต้องเชื่อมฐานข้อมูลก่อน'); },
+    async notifyLineResponse() { return { skipped: true }; },
+    subscribeResponses() { return () => {}; },
     async purgeOldData(days = 365) {
       const cutoff = new Date(Date.now() - days * 864e5).toISOString();
       const quotes = readArr(K_QUOTE);
@@ -314,6 +319,27 @@ async function createSupabaseStore() {
     },
 
     async purgeOldData(days = 365) { return must(await sb.rpc('purge_old_data', { p_days: days })); },
+
+    // ---- ลิงก์ยืนยันการจอง ----
+    canConfirmLinks: true,
+    async getQuoteByToken(token) { return must(await sb.rpc('get_quote_by_token', { p_token: token })); },
+    async respondToQuote(token, action, note = '') {
+      return must(await sb.rpc('respond_to_quote', { p_token: token, p_action: action, p_note: note }));
+    },
+    async notifyLineResponse(id) {
+      const { data, error } = await sb.functions.invoke('notify-line', { body: { event: 'response', id } });
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    subscribeResponses(onResponse) {
+      const ch = sb.channel('quote-responses')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'quotes' }, (payload) => {
+          const q = payload.new;
+          if (q?.customer_response && q.responded_at && Date.now() - new Date(q.responded_at).getTime() < 120000) onResponse(q);
+        })
+        .subscribe();
+      return () => sb.removeChannel(ch);
+    },
 
     /** เรียก Edge Function ส่ง LINE OA หาคนขับ (function ตรวจเองว่าเป็นคำขอใหม่จริง) */
     async notifyLine(id) {

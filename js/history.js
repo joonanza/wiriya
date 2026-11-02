@@ -81,6 +81,8 @@ function render() {
         🟢 ${esc(shortPlace(q.pickup?.name))}<br>🔴 ${esc(shortPlace(q.dropoff?.name))}
         ${q.distance_km ? `<span class="muted"> · ${Number(q.distance_km).toFixed(1)} km${q.options?.roundTrip ? ' (ไป-กลับ)' : ''}</span>` : ''}</div>
       ${q.note ? `<div class="muted">📝 ${esc(q.note)}</div>` : ''}
+      ${q.customer_response === 'confirmed' ? `<div class="resp-ok">✅ ลูกค้ากดยืนยันเอง · ${esc(fmtDateTime(q.responded_at))}</div>` : ''}
+      ${q.customer_response === 'change_requested' ? `<div class="resp-change">✏️ ลูกค้าขอเปลี่ยนแปลง: <b>${esc(q.response_note || '-')}</b></div>` : ''}
       <div class="item-actions">
         <select data-act="status" aria-label="เปลี่ยนสถานะ">
           ${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${k === q.status ? 'selected' : ''}>${v.label}</option>`).join('')}

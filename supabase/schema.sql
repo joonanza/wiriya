@@ -43,6 +43,14 @@ create table if not exists public.quotes (
 );
 alter table public.quotes add column if not exists line_notified_at timestamptz; -- แจ้ง LINE OA แล้วเมื่อไร (กันส่งซ้ำ)
 alter table public.quotes add column if not exists consent_at timestamptz;       -- ลูกค้ายินยอมให้เก็บข้อมูล (PDPA)
+-- ลิงก์ยืนยันการจอง (confirm.html?t=...)
+alter table public.quotes add column if not exists confirm_token text;            -- token สุ่ม ≥ 24 ตัว (สร้างตอนคนขับส่งใบเสนอราคา)
+alter table public.quotes add column if not exists customer_response text
+  check (customer_response in ('confirmed', 'change_requested'));
+alter table public.quotes add column if not exists response_note text;
+alter table public.quotes add column if not exists responded_at timestamptz;
+alter table public.quotes add column if not exists response_notified_at timestamptz; -- แจ้ง LINE เรื่องคำตอบแล้ว
+create unique index if not exists quotes_confirm_token_idx on public.quotes (confirm_token) where confirm_token is not null;
 create index if not exists quotes_created_idx  on public.quotes (created_at desc);
 create index if not exists quotes_customer_idx on public.quotes (customer_id);
 create index if not exists quotes_status_idx   on public.quotes (status);
@@ -261,3 +269,76 @@ begin
 end $$;
 revoke all on function public.purge_old_data(int) from public;
 grant execute on function public.purge_old_data(int) to authenticated;
+
+-- =====================================================================
+-- ลิงก์ยืนยันการจอง: ลูกค้าเปิด confirm.html?t=<token> (ไม่ต้องล็อกอิน)
+--   เห็นเฉพาะข้อมูลของใบนั้น · เบอร์โทรถูกปิดบางส่วน · หมดอายุเมื่อเลยเวลารับหรือเกิน 30 วัน
+-- =====================================================================
+create or replace function public.quote_link_expired(q public.quotes) returns boolean
+language sql stable as $$
+  select (q.pickup_at is not null and q.pickup_at < now())
+      or q.updated_at < now() - interval '30 days'
+      or q.status in ('done', 'cancelled', 'draft', 'request');
+$$;
+
+create or replace function public.get_quote_by_token(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare q public.quotes;
+begin
+  if p_token is null or length(p_token) < 24 then return null; end if;
+  select * into q from public.quotes where confirm_token = p_token;
+  if not found then return null; end if;
+  return jsonb_build_object(
+    'id', q.id,
+    'status', q.status,
+    'customer_name', q.customer_name,
+    'customer_phone_masked', case when q.customer_phone is null then null
+                                  else left(q.customer_phone, 3) || '-xxx-' || right(q.customer_phone, 4) end,
+    'pickup_name', q.pickup->>'name',
+    'dropoff_name', q.dropoff->>'name',
+    'pickup', case when q.pickup ? 'lat' then jsonb_build_object('lat', q.pickup->'lat', 'lng', q.pickup->'lng') end,
+    'dropoff', case when q.dropoff ? 'lat' then jsonb_build_object('lat', q.dropoff->'lat', 'lng', q.dropoff->'lng') end,
+    'pickup_at', q.pickup_at,
+    'distance_km', q.distance_km,
+    'duration_min', q.duration_min,
+    'options', q.options,
+    'fare_quoted', q.fare_quoted,
+    'note', q.note,
+    'customer_response', q.customer_response,
+    'responded_at', q.responded_at,
+    'expired', public.quote_link_expired(q)
+  );
+end $$;
+revoke all on function public.get_quote_by_token(text) from public;
+grant execute on function public.get_quote_by_token(text) to anon, authenticated;
+
+create or replace function public.respond_to_quote(p_token text, p_action text, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare q public.quotes;
+begin
+  if p_token is null or length(p_token) < 24 then raise exception 'ลิงก์ไม่ถูกต้อง'; end if;
+  if p_action not in ('confirm', 'change') then raise exception 'คำสั่งไม่ถูกต้อง'; end if;
+  select * into q from public.quotes where confirm_token = p_token for update;
+  if not found then raise exception 'ลิงก์ไม่ถูกต้อง'; end if;
+  if q.status = 'confirmed' and p_action = 'confirm' then
+    return jsonb_build_object('id', q.id, 'already', true);
+  end if;
+  if public.quote_link_expired(q) and not (q.status = 'confirmed' and p_action = 'change') then
+    raise exception 'ลิงก์หมดอายุแล้ว กรุณาติดต่อคนขับ';
+  end if;
+  if q.responded_at is not null and q.responded_at > now() - interval '1 minute' then
+    raise exception 'เพิ่งส่งคำตอบไป กรุณารอสักครู่';
+  end if;
+  if p_action = 'confirm' then
+    update public.quotes set status = 'confirmed', customer_response = 'confirmed', response_note = null,
+           responded_at = now(), response_notified_at = null
+     where id = q.id;
+  else
+    update public.quotes set customer_response = 'change_requested', response_note = left(coalesce(p_note, ''), 500),
+           responded_at = now(), response_notified_at = null
+     where id = q.id;
+  end if;
+  return jsonb_build_object('id', q.id, 'already', false);
+end $$;
+revoke all on function public.respond_to_quote(text, text, text) from public;
+grant execute on function public.respond_to_quote(text, text, text) to anon, authenticated;

@@ -289,3 +289,11 @@ table.breakdown td.neg { color: var(--danger); }
 .policy h3 { color: var(--text); font-size: 15px; margin-top: 18px; }
 .policy ul { padding-left: 20px; margin: 6px 0; }
 .policy li { margin: 3px 0; }
+.resp-ok { color: var(--accent); font-size: 13px; }
+.resp-change { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 6px 10px; font-size: 13px; margin-top: 4px; }
+.resp-change b { color: var(--text); }
+.confirm-price { display: flex; justify-content: space-between; align-items: baseline; margin: 8px 0 0; }
+.confirm-price .amount { font-size: 32px; font-weight: 700; }
+#actions .link-btn { display: block; margin: 12px auto 0; }
+#changeBox { margin-top: 12px; }
+.center-text { text-align: center; }

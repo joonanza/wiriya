@@ -5,7 +5,7 @@ import { collectRecentPlaces } from './geo.js';
 import { computeCostPerKm } from './cost.js';
 import {
   $, esc, baht, toast, copySync, normalizePhone, phoneDisplay, fmtDateTime, shortPlace,
-  smsLink, waLink, lineShareLink, statusBadge, mapsDirLink,
+  smsLink, waLink, lineShareLink, statusBadge, mapsDirLink, randomToken,
 } from './ui.js';
 
 const store = await requireDriver();
@@ -19,6 +19,12 @@ let editing = null;                      // quote ที่กำลังแก
 let customer = { id: null, phone: '' };  // ลูกค้าที่เลือกจากฐานข้อมูล
 let quotedManual = false;                // คนขับแก้ราคาเองแล้ว
 let msgManual = false;                   // คนขับแก้ข้อความเองแล้ว
+let confirmToken = null;                 // token ของลิงก์ยืนยัน (สร้างครั้งเดียวต่อใบ)
+const confirmUrl = () => {
+  if (!store.canConfirmLinks) return null;
+  confirmToken ||= randomToken(32);
+  return new URL(`confirm.html?t=${confirmToken}`, location.href).href;
+};
 
 const planner = createTripPlanner(cfg, {
   onUpdate: refreshOffer,
@@ -171,7 +177,7 @@ function quoteText() {
     `💰 ราคา ${Math.round(quotedValue()).toLocaleString('th-TH')} บาท${t.tollBaht ? ' (รวมค่าทางด่วนแล้ว)' : ' (ไม่รวมค่าทางด่วน ถ้ามี)'}`,
     note && `📝 ${note}`,
     '',
-    'ตอบกลับ "ยืนยัน" เพื่อจองได้เลยครับ',
+    confirmUrl() ? `✅ กดยืนยันการจอง: ${confirmUrl()}` : 'ตอบกลับ "ยืนยัน" เพื่อจองได้เลยครับ',
     cfg.business?.phone ? `โทร ${cfg.business.phone}` : '',
   ].filter((x) => x !== false && x !== 0 && x !== null && x !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -218,7 +224,9 @@ async function save({ status, channel }) {
       customer = { id: cust.id, phone: cust.phone || '' };
     }
     const dt = st.trip.datetime;
-    const keepStatus = editing && ['confirmed', 'done'].includes(editing.status);
+    // งานที่ยืนยัน/เสร็จแล้วคงสถานะเดิม ยกเว้นลูกค้าขอเปลี่ยนแปลง → ส่งใบใหม่ให้ยืนยันอีกครั้ง
+    const keepStatus = editing && ['confirmed', 'done'].includes(editing.status)
+      && !(status === 'sent' && editing.customer_response === 'change_requested');
     editing = await store.saveQuote({
       id: editing?.id,
       customer_id: cust?.id ?? editing?.customer_id ?? null,
@@ -237,6 +245,9 @@ async function save({ status, channel }) {
       source: editing?.source || 'driver',
       channel: channel || editing?.channel || null,
       note: $('custNote').value.trim(),
+      ...(store.canConfirmLinks ? { confirm_token: confirmToken || editing?.confirm_token || null } : {}),
+      // ส่งใบเสนอราคาใหม่หลังลูกค้าขอเปลี่ยนแปลง → เปิดให้ลูกค้าตอบได้อีกครั้ง
+      ...(status === 'sent' && !keepStatus && editing?.customer_response ? { customer_response: null, response_note: null, responded_at: null } : {}),
     });
     renderEditBanner();
     return editing;
@@ -270,7 +281,9 @@ function renderEditBanner() {
   b.hidden = false;
   b.innerHTML = `
     <div>${statusBadge(editing.status)} ${editing.source === 'customer' ? 'คำขอจากลูกค้า' : 'ใบเสนอราคา'}
-      · สร้าง ${esc(fmtDateTime(editing.created_at))}</div>
+      · สร้าง ${esc(fmtDateTime(editing.created_at))}
+      ${editing.customer_response === 'confirmed' ? `<div>✅ ลูกค้ากดยืนยันเองเมื่อ ${esc(fmtDateTime(editing.responded_at))}</div>` : ''}
+      ${editing.customer_response === 'change_requested' ? `<div class="resp-change">✏️ ลูกค้าขอเปลี่ยนแปลง: <b>${esc(editing.response_note || '-')}</b><br><span class="muted">แก้ไขแล้วกดส่งใหม่ ลิงก์เดิมจะแสดงราคา/รายละเอียดล่าสุด</span></div>` : ''}</div>
     <a class="link-btn" href="quote.html">+ ใบใหม่</a>`;
 }
 
@@ -281,6 +294,7 @@ if (params.get('quote')) {
   if (!q) toast('ไม่พบใบเสนอราคานี้');
   else {
     editing = q;
+    confirmToken = q.confirm_token || null;
     renderEditBanner();
     $('custName').value = q.customer_name || '';
     $('custPhone').value = q.customer_phone ? phoneDisplay(q.customer_phone) : '';

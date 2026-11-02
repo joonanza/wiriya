@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <title>ยืนยันการจอง</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top"><h1 id="bizName">ยืนยันการจอง</h1></header>
+  <main class="narrow">
+    <div class="card" id="box"><p class="empty">กำลังโหลด…</p></div>
+    <div class="card" id="actions" hidden>
+      <button type="button" class="primary big-btn" id="confirmBtn">✅ ยืนยันการจอง</button>
+      <button type="button" class="link-btn" id="changeToggle">ขอเปลี่ยนแปลง / ยกเลิก</button>
+      <div id="changeBox" hidden>
+        <div class="field">
+          <label for="changeNote">ต้องการเปลี่ยนอะไร (เช่น เวลา จุดรับ จำนวนคน หรือขอยกเลิก)</label>
+          <textarea id="changeNote" rows="3" maxlength="500"></textarea>
+        </div>
+        <button type="button" id="changeBtn">ส่งคำขอเปลี่ยนแปลง</button>
+      </div>
+    </div>
+    <div class="card" id="contact" hidden></div>
+    <p class="muted small center-text"><a href="privacy.html">นโยบายความเป็นส่วนตัว</a></p>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="js/confirm.js"></script>
+</body>
+</html>

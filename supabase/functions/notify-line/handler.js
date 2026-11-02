@@ -2,6 +2,7 @@
 //
 // POST { id }        → ลูกค้าเพิ่งส่งคำขอ: ส่ง LINE หาคนขับ (เฉพาะคำขอใหม่ที่ยังไม่เคยแจ้ง ภายใน 15 นาที)
 // POST { test:true } → คนขับกดทดสอบจากหน้าตั้งค่า (ต้องล็อกอิน)
+// POST { event:'response', id } → ลูกค้าเพิ่งกดยืนยัน/ขอเปลี่ยนแปลงจากลิงก์ (แจ้งครั้งเดียว ภายใน 15 นาที)
 //
 // deps = {
 //   env(name)                      → ค่า secret/env
@@ -10,10 +11,12 @@
 //   getUser(jwt)                   → user | null
 //   isDriverEmail(email)           → boolean        (อยู่ในตาราง drivers)
 //   countNotifiedSince(iso)        → number         (จำนวนที่แจ้ง LINE ไปแล้วตั้งแต่เวลานั้น)
+//   claimResponse(id, sinceIso)    → quote | null   (ทำเครื่องหมาย response_notified_at แบบ atomic)
+//   releaseResponse(id)            → void
 //   fetch                          → fetch API
 //   now()                          → Date
 // }
-import { buildRequestMessage, buildTestMessage } from './message.js';
+import { buildRequestMessage, buildTestMessage, buildResponseMessage } from './message.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CLAIM_WINDOW_MS = 15 * 60 * 1000;
@@ -79,6 +82,20 @@ export function createHandler(deps) {
     }
 
     const since = new Date(now().getTime() - CLAIM_WINDOW_MS).toISOString();
+
+    // ---- ลูกค้าตอบใบเสนอราคา ----
+    if (body.event === 'response') {
+      if (!deps.claimResponse) return json(200, { ok: true, skipped: true });
+      const q = await deps.claimResponse(id, since);
+      if (!q) return json(200, { ok: true, skipped: true });
+      const rr = await pushToDriver(buildResponseMessage(q, appUrl));
+      if (!rr.ok) {
+        await deps.releaseResponse?.(id).catch(() => {});
+        return json(rr.status, { error: rr.error });
+      }
+      return json(200, { ok: true, sent: true });
+    }
+
     const quote = await deps.claimRequest(id, since);
     if (!quote) return json(200, { ok: true, skipped: true }); // ไม่ใช่คำขอใหม่ / แจ้งไปแล้ว / เก่าเกิน
 

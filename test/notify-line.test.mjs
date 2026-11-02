@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHandler } from '../supabase/functions/notify-line/handler.js';
-import { buildRequestMessage, fmtThaiDate } from '../supabase/functions/notify-line/message.js';
+import { buildRequestMessage, buildResponseMessage, fmtThaiDate } from '../supabase/functions/notify-line/message.js';
 
 const ID = '11111111-2222-4333-8444-555555555555';
 const QUOTE = {
@@ -19,7 +19,7 @@ const QUOTE = {
   note: 'กระเป๋า 2 ใบ',
 };
 
-function setup({ env = {}, quote = QUOTE, lineStatus = 200, user = { id: 'u1', email: 'Driver@x.com' }, notifiedLastHour = 0 } = {}) {
+function setup({ env = {}, quote = QUOTE, lineStatus = 200, user = { id: 'u1', email: 'Driver@x.com' }, notifiedLastHour = 0, responseQuote = null } = {}) {
   const calls = { fetch: [], claim: [], release: [] };
   const vars = { LINE_CHANNEL_ACCESS_TOKEN: 'tok', LINE_DRIVER_USER_ID: 'Uabc', APP_URL: 'https://joonanza.github.io/wiriya/', ...env };
   const handle = createHandler({
@@ -30,6 +30,8 @@ function setup({ env = {}, quote = QUOTE, lineStatus = 200, user = { id: 'u1', e
     async getUser(jwt) { return jwt === 'good' ? user : jwt === 'other' ? { id: 'u2', email: 'stranger@x.com' } : null; },
     async isDriverEmail(email) { return email === 'driver@x.com'; },
     async countNotifiedSince() { return notifiedLastHour; },
+    async claimResponse(id, since) { calls.claimResp = (calls.claimResp || 0) + 1; return responseQuote; },
+    async releaseResponse(id) { calls.release.push('resp:' + id); },
     async fetch(url, init) {
       calls.fetch.push({ url, init, body: JSON.parse(init.body) });
       return new Response(lineStatus === 200 ? '{}' : '{"message":"bad"}', { status: lineStatus });
@@ -97,6 +99,25 @@ test('hourly cap: skips LINE (no claim) when limit reached', async () => {
   const { handle: h2, calls: c2 } = setup({ notifiedLastHour: 10, env: { LINE_MAX_PER_HOUR: '20' } });
   await h2(post({ id: ID }));
   assert.equal(c2.fetch.length, 1);
+});
+
+test('customer response event: notifies once with confirmation card', async () => {
+  const resp = { ...QUOTE, status: 'confirmed', customer_response: 'confirmed', fare_quoted: 450 };
+  const { handle, calls } = setup({ responseQuote: resp });
+  const res = await handle(post({ event: 'response', id: ID }));
+  assert.deepEqual(await res.json(), { ok: true, sent: true });
+  assert.equal(calls.claimResp, 1);
+  assert.equal(calls.claim.length, 0);
+  assert.match(JSON.stringify(calls.fetch[0].body), /ลูกค้ายืนยันการจองแล้ว/);
+  const { handle: h2, calls: c2 } = setup({ responseQuote: null });
+  assert.deepEqual(await (await h2(post({ event: 'response', id: ID }))).json(), { ok: true, skipped: true });
+  assert.equal(c2.fetch.length, 0);
+});
+
+test('change-request card includes customer note', () => {
+  const m = buildResponseMessage({ ...QUOTE, customer_response: 'change_requested', response_note: 'ขอเลื่อนเป็น 10 โมง' }, 'https://a.b/');
+  assert.match(m.altText, /ขอเปลี่ยนแปลง.*ขอเลื่อนเป็น 10 โมง/);
+  assert.match(JSON.stringify(m), /แก้ไขใบเสนอราคา/);
 });
 
 test('multiple driver IDs use multicast', async () => {

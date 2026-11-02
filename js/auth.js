@@ -97,6 +97,13 @@ function startRequestNotifier(store) {
     showRequestPopup(q);
   };
   store.subscribeRequests(notify);
+  const seenResp = new Set();
+  store.subscribeResponses?.((q) => {
+    const k = `${q.id}|${q.responded_at}`;
+    if (seenResp.has(k)) return;
+    seenResp.add(k);
+    showResponsePopup(q);
+  });
   let lastCount = null;
   setInterval(async () => {
     try {
@@ -128,8 +135,8 @@ function beep() {
 export function showRequestPopup(q) {
   beep();
   navigator.vibrate?.([200, 100, 200]);
-  const title = `🔔 คำขอใหม่จาก ${q.customer_name || 'ลูกค้า'}`;
-  const body = `${shortPlace(q.pickup?.name, 1)} → ${shortPlace(q.dropoff?.name, 1)}`;
+  const title = q._title || `🔔 คำขอใหม่จาก ${q.customer_name || 'ลูกค้า'}`;
+  const body = q._body || `${shortPlace(q.pickup?.name, 1)} → ${shortPlace(q.dropoff?.name, 1)}`;
   const url = `quote.html?quote=${encodeURIComponent(q.id)}`;
   if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
     try { const n = new Notification(title, { body, tag: q.id }); n.onclick = () => { window.focus(); location.href = url; }; } catch { /* ignore */ }
@@ -143,18 +150,29 @@ export function showRequestPopup(q) {
   box.innerHTML = `
     <div><b>${esc(title)}</b><div class="muted">${esc(body)}</div></div>
     <div class="req-popup-actions">
-      <a class="btn primary" href="${url}">เสนอราคา</a>
+      <a class="btn primary" href="${url}">${esc(q._action || 'เสนอราคา')}</a>
       <button type="button" class="icon" aria-label="ปิด">✕</button>
     </div>`;
   box.hidden = false;
   box.querySelector('button').onclick = () => { box.hidden = true; };
-  const link = document.querySelector('header.top nav a[href="history.html"]');
+  const link = q._title ? null : document.querySelector('header.top nav a[href="history.html"]');
   if (link) {
     const b = link.querySelector('.nav-badge');
     if (b) b.textContent = String(Number(b.textContent || 0) + 1);
     else link.insertAdjacentHTML('beforeend', ' <span class="nav-badge">1</span>');
   }
   if (!document.title.startsWith('🔔')) document.title = `🔔 ${document.title}`;
+}
+
+/** ลูกค้ากดยืนยัน / ขอเปลี่ยนแปลงจากลิงก์ */
+export function showResponsePopup(q) {
+  const ok = q.customer_response === 'confirmed';
+  showRequestPopup({
+    ...q,
+    _title: ok ? `✅ ${q.customer_name || 'ลูกค้า'} ยืนยันการจองแล้ว` : `✏️ ${q.customer_name || 'ลูกค้า'} ขอเปลี่ยนแปลง`,
+    _body: ok ? `${shortPlace(q.pickup?.name, 1)} → ${shortPlace(q.dropoff?.name, 1)}` : (q.response_note || 'ดูรายละเอียดในใบเสนอราคา'),
+    _action: ok ? 'ดูงาน' : 'แก้ไข',
+  });
 }
 
 /** ขอสิทธิ์แจ้งเตือนของเบราว์เซอร์ (ต้องกดจากปุ่ม) */

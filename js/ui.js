@@ -88,3 +88,15 @@ export const STATUS = {
   cancelled: { label: 'ยกเลิก', cls: 'st-cancelled' },
 };
 export const statusBadge = (s) => `<span class="badge ${STATUS[s]?.cls || ''}">${esc(STATUS[s]?.label || s)}</span>`;
+
+/** token สุ่มสำหรับลิงก์ยืนยัน (base62, ค่าเริ่มต้น 32 ตัว ≈ 190 bit) */
+export function randomToken(len = 32) {
+  const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const out = [];
+  const buf = new Uint8Array(len * 2);
+  while (out.length < len) {
+    crypto.getRandomValues(buf);
+    for (const b of buf) { if (b < 248 && out.length < len) out.push(abc[b % 62]); } // ตัด bias
+  }
+  return out.join('');
+}

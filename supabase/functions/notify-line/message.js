@@ -108,3 +108,39 @@ export function buildTestMessage(appUrl) {
     text: `✅ ทดสอบการแจ้งเตือนสำเร็จ\nเมื่อลูกค้าส่งคำขอจอง คุณจะได้รับข้อความแบบนี้ทาง LINE${base.startsWith('https://') ? `\n\nเปิดแอป: ${base}` : ''}`,
   };
 }
+
+/** ข้อความแจ้งคนขับเมื่อลูกค้ากดยืนยัน / ขอเปลี่ยนแปลงจากลิงก์ในใบเสนอราคา */
+export function buildResponseMessage(q, appUrl) {
+  const base = String(appUrl || '').replace(/\/?$/, '/');
+  const confirmed = q.customer_response === 'confirmed';
+  const name = cut(q.customer_name || 'ลูกค้า', 60);
+  const phone = String(q.customer_phone || '').replace(/\D/g, '');
+  const when = fmtThaiDate(q.pickup_at);
+  const head = confirmed ? '✅ ลูกค้ายืนยันการจองแล้ว' : '✏️ ลูกค้าขอเปลี่ยนแปลง';
+  const rows = [
+    row('ลูกค้า', name),
+    row('📅 เวลา', when),
+    row('🟢 รับ', shortPlace(q.pickup?.name)),
+    row('🔴 ส่ง', shortPlace(q.dropoff?.name)),
+    q.fare_quoted ? row('ราคา', `${Math.round(Number(q.fare_quoted)).toLocaleString('th-TH')} บาท`) : null,
+    !confirmed && q.response_note ? row('ข้อความ', q.response_note) : null,
+  ].filter(Boolean);
+  const buttons = [
+    base.startsWith('https://') ? uriButton(confirmed ? 'ดูงาน' : 'แก้ไขใบเสนอราคา', `${base}quote.html?quote=${encodeURIComponent(q.id)}`, 'primary') : null,
+    phone.length >= 9 ? uriButton(`โทร ${phoneDisplay(phone)}`, `tel:${phone}`) : null,
+  ].filter(Boolean);
+  return {
+    type: 'flex',
+    altText: cut(`${head}: ${name} | ${when}${!confirmed && q.response_note ? ' | ' + q.response_note : ''}`, 400),
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', backgroundColor: confirmed ? GREEN : '#9a5b00',
+        contents: [{ type: 'text', text: head, color: '#ffffff', weight: 'bold', size: 'lg' }],
+      },
+      body: { type: 'box', layout: 'vertical', spacing: 'md', contents: rows },
+      ...(buttons.length ? { footer: { type: 'box', layout: 'vertical', spacing: 'sm', contents: buttons } } : {}),
+    },
+  };
+}

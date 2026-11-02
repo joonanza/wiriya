@@ -36,6 +36,21 @@ const handle = createHandler({
   async releaseClaim(id) {
     await admin.from('quotes').update({ line_notified_at: null }).eq('id', id);
   },
+  async claimResponse(id, sinceIso) {
+    const { data, error } = await admin.from('quotes')
+      .update({ response_notified_at: new Date().toISOString() })
+      .eq('id', id)
+      .not('customer_response', 'is', null)
+      .is('response_notified_at', null)
+      .gte('responded_at', sinceIso)
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  async releaseResponse(id) {
+    await admin.from('quotes').update({ response_notified_at: null }).eq('id', id);
+  },
   async countNotifiedSince(iso) {
     const { count } = await admin.from('quotes').select('id', { count: 'exact', head: true }).gte('line_notified_at', iso);
     return count || 0;
@@ -164,11 +179,48 @@ function buildTestMessage(appUrl) {
   };
 }
 
+/** ข้อความแจ้งคนขับเมื่อลูกค้ากดยืนยัน / ขอเปลี่ยนแปลงจากลิงก์ในใบเสนอราคา */
+function buildResponseMessage(q, appUrl) {
+  const base = String(appUrl || '').replace(/\/?$/, '/');
+  const confirmed = q.customer_response === 'confirmed';
+  const name = cut(q.customer_name || 'ลูกค้า', 60);
+  const phone = String(q.customer_phone || '').replace(/\D/g, '');
+  const when = fmtThaiDate(q.pickup_at);
+  const head = confirmed ? '✅ ลูกค้ายืนยันการจองแล้ว' : '✏️ ลูกค้าขอเปลี่ยนแปลง';
+  const rows = [
+    row('ลูกค้า', name),
+    row('📅 เวลา', when),
+    row('🟢 รับ', shortPlace(q.pickup?.name)),
+    row('🔴 ส่ง', shortPlace(q.dropoff?.name)),
+    q.fare_quoted ? row('ราคา', `${Math.round(Number(q.fare_quoted)).toLocaleString('th-TH')} บาท`) : null,
+    !confirmed && q.response_note ? row('ข้อความ', q.response_note) : null,
+  ].filter(Boolean);
+  const buttons = [
+    base.startsWith('https://') ? uriButton(confirmed ? 'ดูงาน' : 'แก้ไขใบเสนอราคา', `${base}quote.html?quote=${encodeURIComponent(q.id)}`, 'primary') : null,
+    phone.length >= 9 ? uriButton(`โทร ${phoneDisplay(phone)}`, `tel:${phone}`) : null,
+  ].filter(Boolean);
+  return {
+    type: 'flex',
+    altText: cut(`${head}: ${name} | ${when}${!confirmed && q.response_note ? ' | ' + q.response_note : ''}`, 400),
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', backgroundColor: confirmed ? GREEN : '#9a5b00',
+        contents: [{ type: 'text', text: head, color: '#ffffff', weight: 'bold', size: 'lg' }],
+      },
+      body: { type: 'box', layout: 'vertical', spacing: 'md', contents: rows },
+      ...(buttons.length ? { footer: { type: 'box', layout: 'vertical', spacing: 'sm', contents: buttons } } : {}),
+    },
+  };
+}
+
 // ---------------- handler.js ----------------
 // ===== ตัวจัดการคำขอของ Edge Function notify-line (JavaScript ล้วน, test ได้ใน Node) =====
 //
 // POST { id }        → ลูกค้าเพิ่งส่งคำขอ: ส่ง LINE หาคนขับ (เฉพาะคำขอใหม่ที่ยังไม่เคยแจ้ง ภายใน 15 นาที)
 // POST { test:true } → คนขับกดทดสอบจากหน้าตั้งค่า (ต้องล็อกอิน)
+// POST { event:'response', id } → ลูกค้าเพิ่งกดยืนยัน/ขอเปลี่ยนแปลงจากลิงก์ (แจ้งครั้งเดียว ภายใน 15 นาที)
 //
 // deps = {
 //   env(name)                      → ค่า secret/env
@@ -177,6 +229,8 @@ function buildTestMessage(appUrl) {
 //   getUser(jwt)                   → user | null
 //   isDriverEmail(email)           → boolean        (อยู่ในตาราง drivers)
 //   countNotifiedSince(iso)        → number         (จำนวนที่แจ้ง LINE ไปแล้วตั้งแต่เวลานั้น)
+//   claimResponse(id, sinceIso)    → quote | null   (ทำเครื่องหมาย response_notified_at แบบ atomic)
+//   releaseResponse(id)            → void
 //   fetch                          → fetch API
 //   now()                          → Date
 // }
@@ -245,6 +299,20 @@ function createHandler(deps) {
     }
 
     const since = new Date(now().getTime() - CLAIM_WINDOW_MS).toISOString();
+
+    // ---- ลูกค้าตอบใบเสนอราคา ----
+    if (body.event === 'response') {
+      if (!deps.claimResponse) return json(200, { ok: true, skipped: true });
+      const q = await deps.claimResponse(id, since);
+      if (!q) return json(200, { ok: true, skipped: true });
+      const rr = await pushToDriver(buildResponseMessage(q, appUrl));
+      if (!rr.ok) {
+        await deps.releaseResponse?.(id).catch(() => {});
+        return json(rr.status, { error: rr.error });
+      }
+      return json(200, { ok: true, sent: true });
+    }
+
     const quote = await deps.claimRequest(id, since);
     if (!quote) return json(200, { ok: true, skipped: true }); // ไม่ใช่คำขอใหม่ / แจ้งไปแล้ว / เก่าเกิน
 

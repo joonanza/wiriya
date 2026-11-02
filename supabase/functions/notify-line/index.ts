@@ -34,6 +34,21 @@ const handle = createHandler({
   async releaseClaim(id) {
     await admin.from('quotes').update({ line_notified_at: null }).eq('id', id);
   },
+  async claimResponse(id, sinceIso) {
+    const { data, error } = await admin.from('quotes')
+      .update({ response_notified_at: new Date().toISOString() })
+      .eq('id', id)
+      .not('customer_response', 'is', null)
+      .is('response_notified_at', null)
+      .gte('responded_at', sinceIso)
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  async releaseResponse(id) {
+    await admin.from('quotes').update({ response_notified_at: null }).eq('id', id);
+  },
   async countNotifiedSince(iso) {
     const { count } = await admin.from('quotes').select('id', { count: 'exact', head: true }).gte('line_notified_at', iso);
     return count || 0;
