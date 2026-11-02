@@ -7,6 +7,10 @@ import {
 } from './ui.js';
 
 const ME_KEY = 'wiriya.me.v1';
+const LAST_SUBMIT_KEY = 'wiriya.lastSubmit.v1';
+const PAGE_OPENED_AT = Date.now();
+const MIN_FILL_MS = 3000;      // บอตมักกดส่งทันทีที่โหลดหน้า
+const DEVICE_COOLDOWN_MS = 60000; // เครื่องเดียวกันส่งได้ 1 ครั้ง/นาที
 const MY_REQ_KEY = 'wiriya.myRequests.v1';
 const store = await getStore();
 const cfg = await store.getFareConfig();
@@ -131,12 +135,26 @@ $('lineBtn').addEventListener('click', () => {
 $('copyBtn').addEventListener('click', () => { saveMe(); copySync(bookingText()); toast('คัดลอกแล้ว'); });
 
 // ---------- ส่งคำขอจองเข้าระบบ ----------
+function fakeSuccess() {
+  $('successBox').hidden = false;
+  $('successBox').textContent = '✅ ส่งคำขอจองแล้ว';
+  $('submitBtn').disabled = true;
+}
+
 $('submitBtn').addEventListener('click', async () => {
   const st = planner.state;
   const phone = normalizePhone($('custPhone').value);
   const line = $('custLine').value.trim();
   if (!$('custName').value.trim()) { toast('กรุณาใส่ชื่อ'); $('custName').focus(); return; }
   if (phone.length < 9 && !line) { toast('กรุณาใส่เบอร์โทรหรือ LINE ID'); $('custPhone').focus(); return; }
+  if (!$('consent').checked) { toast('กรุณาติ๊กยินยอมให้เก็บข้อมูลเพื่อใช้ติดต่อกลับ'); $('consent').focus(); return; }
+  // ---- กันบอต (ฝั่งเว็บ) ----
+  if ($('website').value) { fakeSuccess(); return; }                       // กรอกช่องกับดัก = บอต → แกล้งว่าสำเร็จ
+  if (Date.now() - PAGE_OPENED_AT < MIN_FILL_MS) { toast('กรุณาตรวจสอบข้อมูลอีกครั้งก่อนส่ง'); return; }
+  const last = Number(readJson(LAST_SUBMIT_KEY, 0)) || 0;
+  if (Date.now() - last < DEVICE_COOLDOWN_MS) {
+    toast(`เพิ่งส่งคำขอไป กรุณารอ ${Math.ceil((DEVICE_COOLDOWN_MS - (Date.now() - last)) / 1000)} วินาที`); return;
+  }
   $('submitBtn').disabled = true;
   $('submitBtn').textContent = 'กำลังส่ง…';
   try {
@@ -153,8 +171,10 @@ $('submitBtn').addEventListener('click', async () => {
       options: planner.readOptions(),
       fare_calc: st.fare.total,
       note: $('custNote').value.trim(),
+      consent: true,
     };
     const requestId = await store.submitRequest(payload);
+    writeJson(LAST_SUBMIT_KEY, Date.now());
     // แจ้งคนขับทาง LINE OA (ถ้าส่ง LINE ไม่สำเร็จ คำขอยังอยู่ในระบบ คนขับเห็นในแอป)
     store.notifyLine(requestId).catch((err) => console.warn('แจ้ง LINE ไม่สำเร็จ', err));
     saveMe();

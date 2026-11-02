@@ -282,3 +282,10 @@ table.breakdown td.neg { color: var(--danger); }
 .suggest li.sugg-head:hover { background: none; }
 .suggest.loading { opacity: .85; }
 .search-hint { margin: -4px 0 10px; font-size: 12px; }
+.hp { position: absolute !important; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.check.consent { align-items: flex-start; font-size: 13px; line-height: 1.5; }
+.check.consent input { margin-top: 3px; }
+.small { font-size: 12px; }
+.policy h3 { color: var(--text); font-size: 15px; margin-top: 18px; }
+.policy ul { padding-left: 20px; margin: 6px 0; }
+.policy li { margin: 3px 0; }

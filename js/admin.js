@@ -25,6 +25,37 @@ async function persistFare(msg) {
   catch (e) { toast(`บันทึกไม่สำเร็จ: ${e.message}`); }
 }
 
+// สำรองข้อมูล / ส่งออก
+document.querySelectorAll('[data-export]').forEach((btn) => btn.addEventListener('click', async () => {
+  const kind = btn.dataset.export;
+  $('exportStatus').textContent = 'กำลังเตรียมไฟล์…';
+  try {
+    const { toCSV, downloadFile, stamp, CUSTOMER_COLUMNS, QUOTE_COLUMNS, EXPENSE_COLUMNS } = await import('./export.js');
+    const d = stamp();
+    if (kind === 'customers') { const rows = await store.listCustomers(); downloadFile(`wiriya-customers-${d}.csv`, toCSV(rows, CUSTOMER_COLUMNS)); $('exportStatus').textContent = `✅ ดาวน์โหลดลูกค้า ${rows.length} รายการ`; }
+    if (kind === 'quotes') { const rows = await store.listQuotes({ limit: 10000 }); downloadFile(`wiriya-quotes-${d}.csv`, toCSV(rows, QUOTE_COLUMNS)); $('exportStatus').textContent = `✅ ดาวน์โหลดประวัติ ${rows.length} รายการ`; }
+    if (kind === 'expenses') { const rows = await store.listExpenses({ limit: 10000 }); downloadFile(`wiriya-expenses-${d}.csv`, toCSV(rows, EXPENSE_COLUMNS)); $('exportStatus').textContent = `✅ ดาวน์โหลดค่าใช้จ่าย ${rows.length} รายการ`; }
+    if (kind === 'all') {
+      const [customers, quotes, expenses] = await Promise.all([store.listCustomers(), store.listQuotes({ limit: 10000 }), store.listExpenses({ limit: 10000 })]);
+      const backup = { app: 'wiriya', version: 1, exported_at: new Date().toISOString(), fareConfig: fare, costInputs: cost, customers, quotes, expenses };
+      downloadFile(`wiriya-backup-${d}.json`, JSON.stringify(backup, null, 2), 'application/json');
+      $('exportStatus').textContent = `✅ สำรองแล้ว: ลูกค้า ${customers.length} · งาน ${quotes.length} · ค่าใช้จ่าย ${expenses.length}`;
+    }
+  } catch (e) { $('exportStatus').textContent = `❌ ส่งออกไม่สำเร็จ: ${e.message}`; }
+}));
+
+// ลบข้อมูลเก่า (PDPA)
+$('purgeBtn').onclick = async () => {
+  if (!confirm('ลบคำขอ/ใบเสนอราคาที่ไม่ได้เดินทางจริงและเก่ากว่า 1 ปี?\nแนะนำให้กด "สำรองทั้งหมด" ก่อน · ลบแล้วกู้คืนไม่ได้')) return;
+  $('purgeBtn').disabled = true;
+  try {
+    const r = await store.purgeOldData(365);
+    $('purgeStatus').textContent = `✅ ลบแล้ว: ใบเสนอราคา/คำขอ ${r.quotes} รายการ · ลูกค้า ${r.customers} คน`;
+  } catch (e) {
+    $('purgeStatus').textContent = `❌ ลบไม่สำเร็จ: ${e.message}${/purge_old_data|function/.test(e.message) ? ' → รัน schema.sql ใหม่' : ''}`;
+  } finally { $('purgeBtn').disabled = false; }
+};
+
 // ตรวจสอบการเชื่อมต่อ
 $('diagBtn').onclick = async () => {
   $('diagBtn').disabled = true;

@@ -129,29 +129,37 @@ export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true, 
         return;
       }
       if (q.length < 2) { showRecent(''); return; }
-      const my = ++seq;
       // แสดงสถานที่ที่เคยใช้ที่ตรงกันก่อน ระหว่างรอผลค้นหา
       showRecent(q);
-      timer = setTimeout(async () => {
-        ctrl?.abort(); ctrl = new AbortController();
-        list.classList.add('loading');
-        try {
-          const found = await searchPlaces(q, { signal: ctrl.signal, near: near() });
-          if (my !== seq) return;
-          const recent = items.filter((x) => x.source === 'recent');
-          items = [...recent, ...found].slice(0, 9);
-          active = -1;
-          render();
-          if (!items.length) {
-            list.replaceChildren(Object.assign(document.createElement('li'), { className: 'sugg-head', textContent: 'ไม่พบสถานที่ ลองพิมพ์ชื่ออื่น ชื่อถนน หรือแตะบนแผนที่' }));
-            list.hidden = false;
-          }
-        } catch (err) {
-          if (err.name !== 'AbortError') toast(err.message || 'ค้นหาไม่สำเร็จ');
-        } finally { list.classList.remove('loading'); }
-      }, 350);
+      timer = setTimeout(() => doSearch(q, false), 400);
     });
+    async function doSearch(q, full) {
+      const my = ++seq;
+      ctrl?.abort(); ctrl = new AbortController();
+      list.classList.add('loading');
+      try {
+        const found = await searchPlaces(q, { signal: ctrl.signal, near: near(), full });
+        if (my !== seq) return;
+        const recent = items.filter((x) => x.source === 'recent');
+        items = [...recent, ...found].slice(0, 9);
+        active = -1;
+        render();
+        if (!items.length) {
+          list.replaceChildren(Object.assign(document.createElement('li'), {
+            className: 'sugg-head',
+            textContent: full ? 'ไม่พบสถานที่ ลองพิมพ์ชื่ออื่น ชื่อถนน หรือแตะบนแผนที่' : 'ยังไม่พบ กด Enter / ค้นหา เพื่อค้นแบบละเอียด',
+          }));
+          list.hidden = false;
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') toast(err.message || 'ค้นหาไม่สำเร็จ');
+      } finally { list.classList.remove('loading'); }
+    }
     input.addEventListener('keydown', (e) => {
+      const hasResults = items.some((x) => x.source !== 'recent');
+      if (e.key === 'Enter' && !hasResults && input.value.trim().length >= 2) {
+        e.preventDefault(); clearTimeout(timer); doSearch(input.value.trim(), true); return;
+      }
       if (list.hidden) return;
       if (e.key === 'ArrowDown') { active = Math.min(items.length - 1, active + 1); render(); e.preventDefault(); }
       else if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); render(); e.preventDefault(); }

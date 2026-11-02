@@ -33,6 +33,22 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
+      <h2>สำรองข้อมูล</h2>
+      <p class="muted">ดาวน์โหลดเก็บไว้เป็นระยะ (แนะนำเดือนละครั้ง) เพราะฐานข้อมูลแพ็กเกจฟรีไม่มีระบบสำรองอัตโนมัติ · ไฟล์ CSV เปิดใน Excel / Google Sheets ได้</p>
+      <div class="actions">
+        <button type="button" data-export="customers">👥 ลูกค้า (CSV)</button>
+        <button type="button" data-export="quotes">📋 ประวัติงาน (CSV)</button>
+        <button type="button" data-export="expenses">💸 ค่าใช้จ่าย (CSV)</button>
+        <button type="button" data-export="all">🗄️ สำรองทั้งหมด (JSON)</button>
+      </div>
+      <p class="muted" id="exportStatus"></p>
+      <h3>ลบข้อมูลเก่า (PDPA)</h3>
+      <p class="muted">ลบคำขอ/ใบเสนอราคาที่ไม่ได้เดินทางจริง (คำขอใหม่ ร่าง ส่งแล้ว ยกเลิก) ที่ไม่มีความเคลื่อนไหวเกิน 1 ปี และลูกค้าที่ไม่มีประวัติเหลือ · งานที่ยืนยัน/เสร็จสิ้นจะเก็บไว้เป็นหลักฐานรายได้</p>
+      <div class="actions"><button type="button" id="purgeBtn" class="danger-text">ลบข้อมูลที่เก่ากว่า 1 ปี</button></div>
+      <p class="muted" id="purgeStatus"></p>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
       <h2>แจ้งเตือนคำขอจองผ่าน LINE OA</h2>
       <p class="muted">เมื่อลูกค้ากด "ส่งคำขอจอง" ระบบจะส่งข้อความเข้า LINE ของคุณผ่าน LINE Official Account (ตั้งค่าตาม docs/line-oa-setup.md)</p>
       <div class="actions">

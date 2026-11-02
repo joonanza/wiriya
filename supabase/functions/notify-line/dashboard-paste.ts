@@ -10,6 +10,7 @@
 //   LINE_DRIVER_USER_ID        User ID ของคนขับ (ขึ้นต้นด้วย U...) ใส่หลายคนคั่นด้วย , ได้
 //   APP_URL                    เช่น https://joonanza.github.io/wiriya/
 //   ALLOWED_ORIGIN (ไม่บังคับ)   เช่น https://joonanza.github.io
+//   LINE_MAX_PER_HOUR (ไม่บังคับ) เพดานแจ้งเตือนต่อชั่วโมง ค่าเริ่มต้น 10
 // SUPABASE_URL และ SUPABASE_SERVICE_ROLE_KEY มีให้อัตโนมัติใน Edge Function
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
@@ -34,6 +35,10 @@ const handle = createHandler({
   },
   async releaseClaim(id) {
     await admin.from('quotes').update({ line_notified_at: null }).eq('id', id);
+  },
+  async countNotifiedSince(iso) {
+    const { count } = await admin.from('quotes').select('id', { count: 'exact', head: true }).gte('line_notified_at', iso);
+    return count || 0;
   },
   async isDriverEmail(email) {
     const { data } = await admin.from('drivers').select('email').eq('email', email).maybeSingle();
@@ -171,6 +176,7 @@ function buildTestMessage(appUrl) {
 //   releaseClaim(id)               → void           (ส่งไม่สำเร็จ → ปลดเครื่องหมายให้ลองใหม่ได้)
 //   getUser(jwt)                   → user | null
 //   isDriverEmail(email)           → boolean        (อยู่ในตาราง drivers)
+//   countNotifiedSince(iso)        → number         (จำนวนที่แจ้ง LINE ไปแล้วตั้งแต่เวลานั้น)
 //   fetch                          → fetch API
 //   now()                          → Date
 // }
@@ -229,6 +235,14 @@ function createHandler(deps) {
     // ---- คำขอจองใหม่ ----
     const id = body && body.id;
     if (typeof id !== 'string' || !UUID_RE.test(id)) return json(400, { error: 'invalid id' });
+
+    // เพดานต่อชั่วโมง: ต่อให้มีสแปมหลุดมา ก็ไม่เผาโควตา LINE จนหมด (คำขอยังเข้าแอปตามปกติ)
+    const maxPerHour = Number(deps.env('LINE_MAX_PER_HOUR')) || 10;
+    if (deps.countNotifiedSince) {
+      const hourAgo = new Date(now().getTime() - 60 * 60 * 1000).toISOString();
+      const n = await deps.countNotifiedSince(hourAgo).catch(() => 0);
+      if (n >= maxPerHour) return json(200, { ok: true, skipped: true, reason: 'hourly-limit' });
+    }
 
     const since = new Date(now().getTime() - CLAIM_WINDOW_MS).toISOString();
     const quote = await deps.claimRequest(id, since);

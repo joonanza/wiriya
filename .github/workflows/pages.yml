@@ -24,10 +24,12 @@ jobs:
           node-version: 22
       - name: Run tests
         run: npm test
+      - name: Test database schema (Postgres via PGlite)
+        run: npm run test:sql
       - name: Assemble site
         run: |
           mkdir _site
-          cp -r index.html quote.html customer.html history.html customers.html dashboard.html admin.html css js _site/
+          cp -r index.html quote.html customer.html privacy.html history.html customers.html dashboard.html admin.html css js _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

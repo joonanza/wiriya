@@ -21,7 +21,7 @@
         <div class="field">
           <label for="pickup"><span class="dot a"></span>จุดรับ</label>
           <div class="place-input">
-            <input id="pickup" autocomplete="off" placeholder="ชื่อสถานที่ / ถนน / วางลิงก์ Google Maps">
+            <input id="pickup" autocomplete="off" enterkeyhint="search" placeholder="ชื่อสถานที่ / ถนน / วางลิงก์ Google Maps">
             <button class="icon" id="gpsBtn" type="button" title="ใช้ตำแหน่งปัจจุบัน" aria-label="ใช้ตำแหน่งปัจจุบัน">📍</button>
           </div>
           <ul class="suggest" id="pickupSuggest" hidden></ul>
@@ -29,7 +29,7 @@
         <div class="field">
           <label for="dropoff"><span class="dot b"></span>จุดส่ง</label>
           <div class="place-input">
-            <input id="dropoff" autocomplete="off" placeholder="ชื่อสถานที่ / ถนน / วางลิงก์ Google Maps">
+            <input id="dropoff" autocomplete="off" enterkeyhint="search" placeholder="ชื่อสถานที่ / ถนน / วางลิงก์ Google Maps">
             <button class="icon" id="swapBtn" type="button" title="สลับจุดรับ-ส่ง" aria-label="สลับจุดรับ-ส่ง">⇅</button>
           </div>
           <ul class="suggest" id="dropoffSuggest" hidden></ul>
@@ -62,6 +62,10 @@
         </div>
         <div class="field"><label for="custNote">หมายเหตุ (จำนวนคน, สัมภาระ, เที่ยวบิน)</label><textarea id="custNote" rows="2"></textarea></div>
         <label class="check"><input type="checkbox" id="rememberMe" checked> จดจำข้อมูลของฉันในเครื่องนี้</label>
+        <label class="check consent"><input type="checkbox" id="consent"> <span>ยินยอมให้เก็บชื่อ เบอร์โทร LINE ID และจุดรับ-ส่ง เพื่อใช้ติดต่อและให้บริการรับส่งเท่านั้น
+          (<a href="privacy.html" target="_blank" rel="noopener">นโยบายความเป็นส่วนตัว</a>)</span></label>
+        <!-- กับดักบอต: คนมองไม่เห็นช่องนี้ ถ้ามีการกรอกแสดงว่าเป็นบอต -->
+        <div class="hp" aria-hidden="true"><label>เว็บไซต์ <input id="website" name="website" tabindex="-1" autocomplete="off"></label></div>
         <button type="button" class="primary big-btn" id="submitBtn" hidden>📨 ส่งคำขอจอง</button>
         <div class="success" id="successBox" hidden></div>
         <div class="actions" id="altActions">
@@ -71,6 +75,7 @@
         </div>
         <p class="notice" id="lineHint" hidden></p>
         <p class="muted" id="priceNote"></p>
+        <p class="muted small"><a href="privacy.html" target="_blank" rel="noopener">นโยบายความเป็นส่วนตัว</a></p>
       </div>
 
       <div class="card" id="myRequestsCard" hidden>

@@ -152,6 +152,17 @@ function createLocalStore() {
       return [{ ok: false, label: 'เชื่อมต่อ Supabase', detail: this.connectionError || 'ยังไม่ได้ใส่ URL/key ใน js/backend-config.js' }];
     },
     async notifyLine() { return { skipped: true }; },
+    async purgeOldData(days = 365) {
+      const cutoff = new Date(Date.now() - days * 864e5).toISOString();
+      const quotes = readArr(K_QUOTE);
+      const keep = quotes.filter((q) => !(['request', 'draft', 'sent', 'cancelled'].includes(q.status) && (q.updated_at || q.created_at || '') < cutoff));
+      writeArr(K_QUOTE, keep);
+      const used = new Set(keep.map((q) => q.customer_id).filter(Boolean));
+      const custs = readArr(K_CUST);
+      const keepC = custs.filter((c) => used.has(c.id) || (c.updated_at || '') >= cutoff);
+      writeArr(K_CUST, keepC);
+      return { quotes: quotes.length - keep.length, customers: custs.length - keepC.length };
+    },
     async testLine() { throw new Error('ต้องเชื่อมฐานข้อมูล Supabase ก่อน'); },
 
     /** แจ้งเตือนคำขอใหม่แบบ real-time (โหมดในเครื่องไม่มีคำขอจากเครื่องอื่น) */
@@ -301,6 +312,8 @@ async function createSupabaseStore() {
       });
       return out;
     },
+
+    async purgeOldData(days = 365) { return must(await sb.rpc('purge_old_data', { p_days: days })); },
 
     /** เรียก Edge Function ส่ง LINE OA หาคนขับ (function ตรวจเองว่าเป็นคำขอใหม่จริง) */
     async notifyLine(id) {

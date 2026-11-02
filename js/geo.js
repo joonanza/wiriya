@@ -87,37 +87,111 @@ async function photonSearch(q, near, signal) {
   return (data.features || []).map(normalizePhoton).filter((r) => inThailand(r.lat, r.lng));
 }
 
+// ---- ปฏิบัติตามกฎการใช้งาน Nominatim: ไม่เกิน 1 ครั้ง/วินาที, ไม่ใช้ทำ autocomplete หลัก ----
+// https://operations.osmfoundation.org/policies/nominatim/
+const NOMINATIM_GAP_MS = 1100;
+let nominatimChain = Promise.resolve();
+let lastNominatimAt = 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** คิวเรียก Nominatim ทีละครั้ง เว้นระยะ ≥ 1.1 วินาที */
+function nominatimFetch(url, opts) {
+  const run = async () => {
+    const wait = lastNominatimAt + NOMINATIM_GAP_MS - Date.now();
+    if (wait > 0) await sleep(wait);
+    if (opts?.signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    lastNominatimAt = Date.now();
+    return fetch(url, { ...opts, headers: { Accept: 'application/json', ...(opts?.headers || {}) } });
+  };
+  const p = nominatimChain.then(run, run);
+  nominatimChain = p.catch(() => {});
+  return p;
+}
+
 async function nominatimSearch(q, near, signal) {
   const vb = near ? `&viewbox=${near.lng - 0.6},${near.lat + 0.6},${near.lng + 0.6},${near.lat - 0.6}&bounded=0` : '';
   const url = `${NOMINATIM}/search?format=jsonv2&countrycodes=th&accept-language=th&limit=6&addressdetails=1&namedetails=1${vb}&q=${encodeURIComponent(q)}`;
-  const res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
+  const res = await nominatimFetch(url, { signal });
   if (!res.ok) throw new Error(`nominatim ${res.status}`);
   return (await res.json()).map(normalizeNominatim);
 }
 
+// ---- จำผลค้นหา 10 นาที (พิมพ์ซ้ำ / ลบแล้วพิมพ์ใหม่ ไม่ต้องยิงซ้ำ) ----
+const CACHE_MS = 10 * 60 * 1000;
+const cache = new Map();
+const cacheKey = (kind, q, near, full) => `${kind}|${q.trim().toLowerCase()}|${near ? `${near.lat.toFixed(1)},${near.lng.toFixed(1)}` : ''}|${full ? 1 : 0}`;
+function cacheGet(k) {
+  const e = cache.get(k);
+  if (e && Date.now() - e.t < CACHE_MS) return e.v;
+  cache.delete(k);
+  return undefined;
+}
+function cacheSet(k, v) {
+  cache.set(k, { t: Date.now(), v });
+  if (cache.size > 200) cache.delete(cache.keys().next().value);
+}
+export function _clearGeoCache() { cache.clear(); lastNominatimAt = 0; }
+
+const MIN_PHOTON_RESULTS = 3;
+
 /**
- * ค้นหาสถานที่จาก 2 แหล่งพร้อมกัน (Photon: พิมพ์บางส่วนก็เจอ, Nominatim: ที่อยู่ไทยละเอียด)
- * @param {{signal?:AbortSignal, near?:{lat:number,lng:number}}} opts
+ * ค้นหาสถานที่
+ * - ระหว่างพิมพ์: ใช้ Photon เป็นหลัก (ออกแบบมาเพื่อ autocomplete)
+ * - เรียก Nominatim เสริมเฉพาะเมื่อ Photon เจอน้อยกว่า 3 รายการ/ล้มเหลว หรือเมื่อกด Enter (full)
+ * @param {{signal?:AbortSignal, near?:{lat:number,lng:number}, full?:boolean}} opts
  */
-export async function searchPlaces(query, { signal, near } = {}) {
+export async function searchPlaces(query, { signal, near, full = false } = {}) {
   const coords = parseCoordinates(query);
   if (coords) return [{ ...coords, title: `พิกัด ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`, subtitle: 'จากลิงก์/พิกัดที่วาง', name: '', source: 'coords' }];
-  const [ph, no] = await Promise.allSettled([photonSearch(query, near, signal), nominatimSearch(query, near, signal)]);
+  const key = cacheKey('search', query, near, full);
+  const hit = cacheGet(key);
+  if (hit) return hit;
+
+  let photon = [];
+  let photonFailed = false;
+  try { photon = await photonSearch(query, near, signal); } catch (e) {
+    if (e.name === 'AbortError') throw e;
+    photonFailed = true;
+  }
+  let nomi = [];
+  let nomiFailed = false;
+  if (full || photonFailed || photon.length < MIN_PHOTON_RESULTS) {
+    try { nomi = await nominatimSearch(query, near, signal); } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      nomiFailed = true;
+    }
+  }
   if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
-  if (ph.status === 'rejected' && no.status === 'rejected') throw new Error('ค้นหาสถานที่ไม่สำเร็จ ลองใหม่อีกครั้ง หรือแตะบนแผนที่');
-  return mergeResults([ph.value || [], no.value || []], near);
+  if (photonFailed && (nomiFailed || !nomi.length) && !photon.length) {
+    if (nomiFailed) throw new Error('ค้นหาสถานที่ไม่สำเร็จ ลองใหม่อีกครั้ง หรือแตะบนแผนที่');
+  }
+  const out = mergeResults([photon, nomi], near);
+  cacheSet(key, out);
+  return out;
 }
 
+/** ชื่อที่อยู่จากพิกัด: Photon ก่อน (ไม่จำกัดเข้ม) แล้วค่อย Nominatim */
 export async function reverseGeocode(lat, lng) {
+  const fallback = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  const key = cacheKey('rev', `${lat.toFixed(4)},${lng.toFixed(4)}`, null, false);
+  const hit = cacheGet(key);
+  if (hit) return hit;
+  let name = null;
   try {
-    const url = `${NOMINATIM}/reverse?format=jsonv2&accept-language=th&lat=${lat}&lon=${lng}`;
-    const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) throw new Error();
-    const d = await res.json();
-    return d.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  } catch {
-    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    const res = await fetch(`${PHOTON}/reverse?lat=${lat}&lon=${lng}&limit=1`);
+    if (res.ok) {
+      const f = (await res.json()).features?.[0];
+      if (f) name = normalizePhoton(f).name || null;
+    }
+  } catch { /* ลอง Nominatim ต่อ */ }
+  if (!name) {
+    try {
+      const res = await nominatimFetch(`${NOMINATIM}/reverse?format=jsonv2&accept-language=th&lat=${lat}&lon=${lng}`);
+      if (res.ok) name = (await res.json()).display_name || null;
+    } catch { /* ใช้พิกัดแทน */ }
   }
+  const out = name || fallback;
+  if (name) cacheSet(key, out);
+  return out;
 }
 
 /** ระยะทางเส้นตรงบนผิวโลก (km) */

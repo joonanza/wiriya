@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>นโยบายความเป็นส่วนตัว</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top"><h1 id="bizName">นโยบายความเป็นส่วนตัว</h1></header>
+  <main class="narrow">
+    <article class="card policy">
+      <h2>นโยบายความเป็นส่วนตัว</h2>
+      <p class="muted">ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 (PDPA) · ปรับปรุงล่าสุด 2 พฤศจิกายน 2569</p>
+
+      <h3>1. ผู้เก็บข้อมูล</h3>
+      <p><b class="biz">ผู้ให้บริการรถรับส่ง</b> (“เรา”) เป็นผู้ควบคุมข้อมูลส่วนบุคคลที่คุณให้ไว้ผ่านหน้าจองรถนี้<br>
+        ติดต่อ: <span id="contact">-</span></p>
+
+      <h3>2. ข้อมูลที่เก็บ</h3>
+      <ul>
+        <li>ชื่อ, เบอร์โทรศัพท์, LINE ID (ถ้าระบุ)</li>
+        <li>จุดรับ-ส่ง (ชื่อสถานที่และพิกัด), วัน-เวลารับ, หมายเหตุที่คุณกรอก</li>
+        <li>ตำแหน่งปัจจุบันของอุปกรณ์ <u>เฉพาะเมื่อคุณกดปุ่ม 📍</u> เพื่อใช้เป็นจุดรับ</li>
+      </ul>
+
+      <h3>3. วัตถุประสงค์</h3>
+      <ul>
+        <li>ติดต่อกลับเพื่อแจ้งราคาและยืนยันการจอง</li>
+        <li>ให้บริการรับส่งตามที่จอง และเก็บประวัติการเดินทางเพื่อบริการครั้งถัดไป</li>
+      </ul>
+      <p>ฐานทางกฎหมาย: ความยินยอมของคุณ และการดำเนินการตามคำขอก่อนเข้าทำสัญญา (มาตรา 24 และ 19)<br>
+        เรา<b>ไม่ขาย ไม่ส่งต่อ</b>ข้อมูลของคุณให้บุคคลอื่นเพื่อการตลาด</p>
+
+      <h3>4. ผู้ให้บริการที่เกี่ยวข้อง</h3>
+      <ul>
+        <li><b>Supabase</b>: เก็บข้อมูลการจองบนเซิร์ฟเวอร์ (ภูมิภาคสิงคโปร์)</li>
+        <li><b>LINE</b>: ส่งแจ้งเตือนคำขอจองถึงคนขับ</li>
+        <li><b>OpenStreetMap / Photon / OSRM</b>: ค้นหาสถานที่และคำนวณเส้นทาง (ส่งเฉพาะคำค้นและพิกัด ไม่ส่งชื่อหรือเบอร์โทร)</li>
+      </ul>
+
+      <h3>5. ระยะเวลาเก็บ</h3>
+      <ul>
+        <li>คำขอที่ไม่ได้เดินทางจริง (ยกเลิก/ไม่ได้ยืนยัน): ลบภายใน <b>1 ปี</b></li>
+        <li>งานที่เดินทางแล้ว: เก็บไม่เกิน <b>5 ปี</b> เพื่อเป็นหลักฐานรายได้ตามกฎหมายภาษี</li>
+        <li>ข้อมูลที่ “จดจำในเครื่องนี้” อยู่ในเบราว์เซอร์ของคุณเอง ลบได้โดยเอาเครื่องหมายออกหรือล้างข้อมูลเบราว์เซอร์</li>
+      </ul>
+
+      <h3>6. สิทธิของคุณ</h3>
+      <p>คุณมีสิทธิขอดู ขอสำเนา ขอแก้ไข ขอลบ หรือถอนความยินยอมได้ทุกเมื่อ โดยติดต่อตามช่องทางในข้อ 1
+        เราจะดำเนินการภายใน 30 วัน และคุณมีสิทธิร้องเรียนต่อสำนักงานคณะกรรมการคุ้มครองข้อมูลส่วนบุคคล (สคส.)</p>
+
+      <h3>7. ความปลอดภัย</h3>
+      <p>ข้อมูลส่งผ่านการเชื่อมต่อแบบเข้ารหัส (HTTPS) และเข้าถึงได้เฉพาะคนขับที่ได้รับอนุญาตเท่านั้น</p>
+
+      <p class="actions"><a class="btn" href="customer.html">← กลับไปหน้าจองรถ</a></p>
+    </article>
+  </main>
+  <script type="module">
+    import { getStore } from './js/store.js';
+    import { esc } from './js/ui.js';
+    try {
+      const cfg = await (await getStore()).getFareConfig();
+      const b = cfg.business || {};
+      if (b.name) { document.getElementById('bizName').textContent = b.name; document.querySelectorAll('.biz').forEach((e) => { e.textContent = b.name; }); }
+      const parts = [b.phone && `โทร <a href="tel:${esc(b.phone.replace(/[^\d+]/g, ''))}">${esc(b.phone)}</a>`,
+        b.lineOaId && `LINE ${esc(b.lineOaId)}`, !b.lineOaId && b.lineId && `LINE ID ${esc(b.lineId)}`].filter(Boolean);
+      if (parts.length) document.getElementById('contact').innerHTML = parts.join(' · ');
+    } catch { /* แสดงข้อความเริ่มต้น */ }
+  </script>
+</body>
+</html>

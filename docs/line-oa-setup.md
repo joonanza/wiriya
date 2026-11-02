@@ -92,6 +92,10 @@ npx supabase functions deploy notify-line --no-verify-jwt
 
 ดู log ได้ที่ Supabase Dashboard → Edge Functions → notify-line → **Logs**
 
+## กันโควตา LINE หมด
+- function ส่งแจ้งเตือนไม่เกิน **10 ครั้ง/ชั่วโมง** (ปรับได้ด้วย Secret `LINE_MAX_PER_HOUR`) คำขอที่เกินยังเข้าแอปตามปกติ แค่ไม่ส่ง LINE
+- ถ้าแก้ไฟล์ใน `supabase/functions/notify-line/` ต้อง deploy ใหม่ (วาง `dashboard-paste.ts` ใหม่ทั้งไฟล์)
+
 ## ความปลอดภัย
 - Channel access token อยู่ใน Supabase Secrets เท่านั้น ไม่อยู่ในโค้ดหรือหน้าเว็บ
 - function ส่ง LINE เฉพาะคำขอที่มีสถานะ "คำขอใหม่" ยังไม่เคยแจ้ง และสร้างภายใน 15 นาที

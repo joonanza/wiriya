@@ -42,6 +42,7 @@ create table if not exists public.quotes (
   updated_at      timestamptz not null default now()
 );
 alter table public.quotes add column if not exists line_notified_at timestamptz; -- แจ้ง LINE OA แล้วเมื่อไร (กันส่งซ้ำ)
+alter table public.quotes add column if not exists consent_at timestamptz;       -- ลูกค้ายินยอมให้เก็บข้อมูล (PDPA)
 create index if not exists quotes_created_idx  on public.quotes (created_at desc);
 create index if not exists quotes_customer_idx on public.quotes (customer_id);
 create index if not exists quotes_status_idx   on public.quotes (status);
@@ -139,6 +140,20 @@ create policy public_read_fare on public.settings
 -- SECURITY DEFINER: ลูกค้าไม่ได้สิทธิ์เขียนตารางตรง ๆ ทำได้เฉพาะผ่านฟังก์ชันนี้
 -- ไม่แก้ชื่อ/ข้อมูลลูกค้าเดิม (กันคนอื่นใช้เบอร์เราไปเปลี่ยนชื่อ)
 -- =====================================================================
+-- ตรวจว่าเป็นจุด {name, lat, lng} ในประเทศไทยจริง (กันบอตส่งข้อมูลมั่ว)
+create or replace function public.valid_th_place(p jsonb) returns boolean
+language plpgsql immutable as $$
+declare lat numeric; lng numeric;
+begin
+  if p is null or jsonb_typeof(p) <> 'object' then return false; end if;
+  begin
+    lat := (p->>'lat')::numeric; lng := (p->>'lng')::numeric;
+  exception when others then return false;
+  end;
+  return lat between 5 and 21 and lng between 97 and 106
+     and length(coalesce(p->>'name', '')) between 1 and 500;
+end $$;
+
 create or replace function public.submit_booking_request(p jsonb) returns uuid
 language plpgsql security definer set search_path = public as $$
 declare
@@ -146,15 +161,38 @@ declare
   v_phone text := left(regexp_replace(coalesce(p->>'customer_phone', ''), '\D', '', 'g'), 15);
   v_line  text := left(coalesce(trim(p->>'customer_line'), ''), 50);
   v_note  text := left(coalesce(p->>'note', ''), 1000);
+  v_pickup_at timestamptz;
   v_cid   uuid;
   v_qid   uuid;
 begin
   if v_phone like '66%' and length(v_phone) = 11 then v_phone := '0' || substr(v_phone, 3); end if;
-  if v_phone = '' and v_line = '' then
-    raise exception 'ต้องระบุเบอร์โทรหรือ LINE ID';
+
+  -- ---- ตรวจข้อมูล ----
+  if coalesce(p->>'consent', '') <> 'true' then
+    raise exception 'กรุณายินยอมให้เก็บข้อมูลเพื่อใช้ติดต่อและให้บริการ';
   end if;
-  if (select count(*) from public.quotes where status = 'request' and created_at > now() - interval '10 minutes') > 30 then
+  if v_name = '' then raise exception 'กรุณาใส่ชื่อ'; end if;
+  if v_phone = '' and v_line = '' then raise exception 'ต้องระบุเบอร์โทรหรือ LINE ID'; end if;
+  if v_phone <> '' and v_phone !~ '^0[0-9]{8,9}$' then raise exception 'เบอร์โทรไม่ถูกต้อง'; end if;
+  if not public.valid_th_place(p->'pickup') or not public.valid_th_place(p->'dropoff') then
+    raise exception 'ตำแหน่งรับ-ส่งไม่ถูกต้อง';
+  end if;
+  begin
+    v_pickup_at := nullif(p->>'pickup_at', '')::timestamptz;
+  exception when others then raise exception 'วัน-เวลาไม่ถูกต้อง';
+  end;
+  if v_pickup_at is not null and (v_pickup_at < now() - interval '1 day' or v_pickup_at > now() + interval '1 year') then
+    raise exception 'วัน-เวลาไม่ถูกต้อง';
+  end if;
+
+  -- ---- จำกัดจำนวน (กันสแปม / กันโควตา LINE หมด) ----
+  if (select count(*) from public.quotes where status = 'request' and created_at > now() - interval '10 minutes') >= 30 then
     raise exception 'มีคำขอจำนวนมากเกินไป กรุณาลองใหม่ภายหลัง';
+  end if;
+  if (select count(*) from public.quotes
+        where status = 'request' and created_at > now() - interval '30 minutes'
+          and ((v_phone <> '' and customer_phone = v_phone) or (v_line <> '' and lower(customer_line) = lower(v_line)))) >= 3 then
+    raise exception 'ส่งคำขอบ่อยเกินไป กรุณารอคนขับติดต่อกลับ หรือโทรหาโดยตรง';
   end if;
 
   if v_phone <> '' then
@@ -167,14 +205,17 @@ begin
   insert into public.quotes (
     customer_id, customer_name, customer_phone, customer_line,
     pickup, dropoff, pickup_at, distance_km, duration_min, options,
-    fare_calc, fare_quoted, status, source, note)
+    fare_calc, fare_quoted, status, source, note, consent_at)
   values (
     v_cid, v_name, nullif(v_phone, ''), nullif(v_line, ''),
-    p->'pickup', p->'dropoff', nullif(p->>'pickup_at', '')::timestamptz,
-    nullif(p->>'distance_km', '')::numeric, nullif(p->>'duration_min', '')::numeric,
+    jsonb_build_object('name', left(p->'pickup'->>'name', 500), 'lat', (p->'pickup'->>'lat')::numeric, 'lng', (p->'pickup'->>'lng')::numeric),
+    jsonb_build_object('name', left(p->'dropoff'->>'name', 500), 'lat', (p->'dropoff'->>'lat')::numeric, 'lng', (p->'dropoff'->>'lng')::numeric),
+    v_pickup_at,
+    least(greatest(coalesce(nullif(p->>'distance_km', '')::numeric, 0), 0), 2000),
+    least(greatest(coalesce(nullif(p->>'duration_min', '')::numeric, 0), 0), 3000),
     coalesce(p->'options', '{}'::jsonb),
     nullif(p->>'fare_calc', '')::numeric, nullif(p->>'fare_calc', '')::numeric,
-    'request', 'customer', v_note)
+    'request', 'customer', v_note, now())
   returning id into v_qid;
 
   return v_qid;
@@ -195,3 +236,28 @@ begin
     alter publication supabase_realtime add table public.quotes;
   end if;
 end $$;
+
+-- =====================================================================
+-- PDPA: ลบข้อมูลที่ไม่จำเป็นแล้ว (กดจากหน้าตั้งค่า → "ลบข้อมูลเก่า")
+--   ลบใบเสนอราคา/คำขอที่ไม่ได้เป็นงานจริง (คำขอใหม่, ร่าง, ส่งแล้ว, ยกเลิก) ที่เก่ากว่า p_days วัน
+--   และลบลูกค้าที่ไม่มีประวัติเหลืออยู่และไม่ได้อัปเดตนานกว่า p_days วัน
+--   งานที่ยืนยัน/เสร็จสิ้นเก็บไว้เป็นหลักฐานรายได้
+-- =====================================================================
+create or replace function public.purge_old_data(p_days int default 365) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare q_count int; c_count int;
+begin
+  if not public.is_driver() then raise exception 'ไม่มีสิทธิ์'; end if;
+  if p_days < 30 then raise exception 'ต้องเก็บข้อมูลอย่างน้อย 30 วัน'; end if;
+  delete from public.quotes
+   where status in ('request', 'draft', 'sent', 'cancelled')
+     and updated_at < now() - make_interval(days => p_days);
+  get diagnostics q_count = row_count;
+  delete from public.customers c
+   where c.updated_at < now() - make_interval(days => p_days)
+     and not exists (select 1 from public.quotes q where q.customer_id = c.id);
+  get diagnostics c_count = row_count;
+  return jsonb_build_object('quotes', q_count, 'customers', c_count);
+end $$;
+revoke all on function public.purge_old_data(int) from public;
+grant execute on function public.purge_old_data(int) to authenticated;

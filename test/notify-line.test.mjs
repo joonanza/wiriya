@@ -19,7 +19,7 @@ const QUOTE = {
   note: 'กระเป๋า 2 ใบ',
 };
 
-function setup({ env = {}, quote = QUOTE, lineStatus = 200, user = { id: 'u1', email: 'Driver@x.com' } } = {}) {
+function setup({ env = {}, quote = QUOTE, lineStatus = 200, user = { id: 'u1', email: 'Driver@x.com' }, notifiedLastHour = 0 } = {}) {
   const calls = { fetch: [], claim: [], release: [] };
   const vars = { LINE_CHANNEL_ACCESS_TOKEN: 'tok', LINE_DRIVER_USER_ID: 'Uabc', APP_URL: 'https://joonanza.github.io/wiriya/', ...env };
   const handle = createHandler({
@@ -29,6 +29,7 @@ function setup({ env = {}, quote = QUOTE, lineStatus = 200, user = { id: 'u1', e
     async releaseClaim(id) { calls.release.push(id); },
     async getUser(jwt) { return jwt === 'good' ? user : jwt === 'other' ? { id: 'u2', email: 'stranger@x.com' } : null; },
     async isDriverEmail(email) { return email === 'driver@x.com'; },
+    async countNotifiedSince() { return notifiedLastHour; },
     async fetch(url, init) {
       calls.fetch.push({ url, init, body: JSON.parse(init.body) });
       return new Response(lineStatus === 200 ? '{}' : '{"message":"bad"}', { status: lineStatus });
@@ -86,6 +87,16 @@ test('missing secrets → 500 with clear message', async () => {
   const res = await handle(post({ id: ID }));
   assert.equal(res.status, 500);
   assert.match((await res.json()).error, /LINE_CHANNEL_ACCESS_TOKEN/);
+});
+
+test('hourly cap: skips LINE (no claim) when limit reached', async () => {
+  const { handle, calls } = setup({ notifiedLastHour: 10 });
+  const res = await handle(post({ id: ID }));
+  assert.deepEqual(await res.json(), { ok: true, skipped: true, reason: 'hourly-limit' });
+  assert.equal(calls.claim.length + calls.fetch.length, 0);
+  const { handle: h2, calls: c2 } = setup({ notifiedLastHour: 10, env: { LINE_MAX_PER_HOUR: '20' } });
+  await h2(post({ id: ID }));
+  assert.equal(c2.fetch.length, 1);
 });
 
 test('multiple driver IDs use multicast', async () => {

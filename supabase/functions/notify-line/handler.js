@@ -9,6 +9,7 @@
 //   releaseClaim(id)               → void           (ส่งไม่สำเร็จ → ปลดเครื่องหมายให้ลองใหม่ได้)
 //   getUser(jwt)                   → user | null
 //   isDriverEmail(email)           → boolean        (อยู่ในตาราง drivers)
+//   countNotifiedSince(iso)        → number         (จำนวนที่แจ้ง LINE ไปแล้วตั้งแต่เวลานั้น)
 //   fetch                          → fetch API
 //   now()                          → Date
 // }
@@ -68,6 +69,14 @@ export function createHandler(deps) {
     // ---- คำขอจองใหม่ ----
     const id = body && body.id;
     if (typeof id !== 'string' || !UUID_RE.test(id)) return json(400, { error: 'invalid id' });
+
+    // เพดานต่อชั่วโมง: ต่อให้มีสแปมหลุดมา ก็ไม่เผาโควตา LINE จนหมด (คำขอยังเข้าแอปตามปกติ)
+    const maxPerHour = Number(deps.env('LINE_MAX_PER_HOUR')) || 10;
+    if (deps.countNotifiedSince) {
+      const hourAgo = new Date(now().getTime() - 60 * 60 * 1000).toISOString();
+      const n = await deps.countNotifiedSince(hourAgo).catch(() => 0);
+      if (n >= maxPerHour) return json(200, { ok: true, skipped: true, reason: 'hourly-limit' });
+    }
 
     const since = new Date(now().getTime() - CLAIM_WINDOW_MS).toISOString();
     const quote = await deps.claimRequest(id, since);
