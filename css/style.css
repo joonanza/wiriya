@@ -127,3 +127,13 @@ table.grid th:last-child:empty, table.grid td:has(> button.icon) { width: 44px; 
 .scroll-x { overflow-x: auto; }
 #simTable td { padding-right: 8px; }
 #simTable td:first-child { min-width: 110px; }
+
+/* มือถือ: เรียงใหม่ให้แผนที่อยู่ใต้ช่องเส้นทาง → ราคา → จอง */
+@media (max-width: 860px) {
+  .layout.reorder > section:first-child { display: contents; }
+  .layout.reorder .card + .card { margin-top: 0; }
+  .layout.reorder #routeCard { order: 1; }
+  .layout.reorder #mapSection { order: 2; }
+  .layout.reorder #quoteCard { order: 3; }
+  .layout.reorder #bookCard { order: 4; }
+}

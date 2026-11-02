@@ -15,9 +15,9 @@
     <nav><a href="index.html" aria-current="page">คำนวณราคา</a><a href="admin.html">ตั้งค่า (Admin)</a></nav>
   </header>
 
-  <main class="layout">
+  <main class="layout reorder">
     <section>
-      <div class="card">
+      <div class="card" id="routeCard">
         <h2>เส้นทาง</h2>
         <div class="field">
           <label for="pickup"><span class="dot a"></span>จุดรับ</label>
@@ -81,7 +81,7 @@
       </div>
     </section>
 
-    <section>
+    <section id="mapSection">
       <div id="map" role="application" aria-label="แผนที่"></div>
       <p class="map-hint">คลิกบนแผนที่เพื่อปักจุดรับ แล้วคลิกอีกครั้งเพื่อปักจุดส่ง ลากหมุดเพื่อปรับตำแหน่งได้</p>
     </section>
