@@ -13,6 +13,11 @@ npm test       # unit test ของ pricing engine และ cost model
 
 ทำเป็นไฟล์ static ทั้งหมด จึงเปิดผ่าน static host ใดก็ได้ เช่น GitHub Pages, Netlify, Vercel
 
+### Deploy ด้วย GitHub Pages
+มี workflow อยู่ที่ `.github/workflows/pages.yml` ระบบจะรันเทสต์แล้ว deploy ให้อัตโนมัติทุกครั้งที่ push
+ตั้งค่าครั้งแรกครั้งเดียว: **Settings → Pages → Build and deployment → Source: GitHub Actions**
+จากนั้นเปิดได้ที่ `https://joonanza.github.io/wiriya/`
+
 | หน้า | หน้าที่ |
 |---|---|
 | `index.html` | หน้าลูกค้า: ค้นหาสถานที่, คลิก/ลากหมุดบนแผนที่, GPS, เลือกรถ/เวลา/ไป-กลับ/สนามบิน/ค่ารอ/ทางด่วน → ราคาพร้อม breakdown → ส่งจองทาง LINE / คัดลอก / โทร |
