@@ -36,8 +36,10 @@
       <h2>แจ้งเตือนคำขอจองผ่าน LINE OA</h2>
       <p class="muted">เมื่อลูกค้ากด "ส่งคำขอจอง" ระบบจะส่งข้อความเข้า LINE ของคุณผ่าน LINE Official Account (ตั้งค่าตาม docs/line-oa-setup.md)</p>
       <div class="actions">
+        <button type="button" id="diagBtn">ตรวจสอบการเชื่อมต่อฐานข้อมูล</button>
         <button type="button" id="testLineBtn">ส่งข้อความทดสอบเข้า LINE</button>
       </div>
+      <ul class="diag" id="diagList" hidden></ul>
       <p class="muted" id="lineStatus"></p>
     </div>
     <div class="layout">

@@ -1,6 +1,7 @@
 import { buildFareConfig } from './config.js';
 import { DEFAULT_COST_INPUTS } from './cost.js';
 import { requireDriver } from './auth.js';
+import { esc } from './ui.js';
 import { computeCostPerKm, recommendRates, blendedKwhRate } from './cost.js';
 import { calculateFare, estimateTripProfit } from './pricing.js';
 
@@ -23,6 +24,19 @@ async function persistFare(msg) {
   try { await store.saveFareConfig(fare); toast(msg); }
   catch (e) { toast(`บันทึกไม่สำเร็จ: ${e.message}`); }
 }
+
+// ตรวจสอบการเชื่อมต่อ
+$('diagBtn').onclick = async () => {
+  $('diagBtn').disabled = true;
+  $('diagList').hidden = false;
+  $('diagList').innerHTML = '<li>กำลังตรวจ…</li>';
+  try {
+    const rows = await store.diagnose();
+    $('diagList').innerHTML = rows.map((r) => `<li class="${r.ok ? 'ok' : 'bad'}">${r.ok ? '✅' : '❌'} <b>${esc(r.label)}</b> <span class="muted">${esc(r.detail || '')}</span></li>`).join('');
+  } catch (e) {
+    $('diagList').innerHTML = `<li class="bad">❌ ${esc(e.message)}</li>`;
+  } finally { $('diagBtn').disabled = false; }
+};
 
 // ทดสอบแจ้งเตือน LINE OA
 if (store.mode !== 'supabase') {

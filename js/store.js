@@ -147,6 +147,9 @@ function createLocalStore() {
     },
     async deleteExpense(id) { writeArr(K_EXP, readArr(K_EXP).filter((x) => x.id !== id)); },
 
+    async diagnose() {
+      return [{ ok: false, label: 'เชื่อมต่อ Supabase', detail: this.connectionError || 'ยังไม่ได้ใส่ URL/key ใน js/backend-config.js' }];
+    },
     async notifyLine() { return { skipped: true }; },
     async testLine() { throw new Error('ต้องเชื่อมฐานข้อมูล Supabase ก่อน'); },
 
@@ -260,6 +263,33 @@ async function createSupabaseStore() {
           (payload) => onNew(payload.new))
         .subscribe();
       return () => sb.removeChannel(ch);
+    },
+
+    /** ตรวจทีละขั้นว่าตั้งค่า Supabase ครบหรือยัง (แสดงในหน้าตั้งค่า) */
+    async diagnose() {
+      const out = [{ ok: true, label: 'เชื่อมต่อ Supabase', detail: SUPABASE_URL }];
+      const hint = (msg) => (/does not exist|schema cache|PGRST20/.test(msg) ? `${msg} → ยังไม่ได้รัน supabase/schema.sql (หรือรันไม่ครบ)` : msg);
+      const check = async (label, fn) => {
+        try { const detail = await fn(); out.push({ ok: true, label, detail }); }
+        catch (e) { out.push({ ok: false, label, detail: hint(e.message) }); }
+      };
+      await check('ตาราง settings (อ่านเรทราคา)', async () => { const r = await sb.from('settings').select('key').limit(1); if (r.error) throw r.error; return 'พร้อม'; });
+      const { data: s } = await sb.auth.getSession();
+      out.push({ ok: !!s.session, label: 'ล็อกอินคนขับ', detail: s.session ? s.session.user.email : 'ยังไม่ได้ล็อกอิน' });
+      for (const t of ['customers', 'quotes', 'expenses']) {
+        await check(`ตาราง ${t}`, async () => {
+          const r = await sb.from(t).select('id', { count: 'exact', head: true });
+          if (r.error) throw r.error;
+          return s.session ? `${r.count ?? 0} รายการ` : 'มีตาราง (ต้องล็อกอินจึงเห็นข้อมูล)';
+        });
+      }
+      await check('Edge Function notify-line', async () => {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-line`, { method: 'OPTIONS' });
+        if (res.status === 404) throw new Error('ยังไม่ได้ deploy (ดู docs/line-oa-setup.md ขั้นที่ 6)');
+        if (!res.ok) throw new Error(`ตอบกลับ ${res.status} → ตรวจว่าปิด Verify JWT แล้ว`);
+        return 'deploy แล้ว';
+      });
+      return out;
     },
 
     /** เรียก Edge Function ส่ง LINE OA หาคนขับ (function ตรวจเองว่าเป็นคำขอใหม่จริง) */

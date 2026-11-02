@@ -268,3 +268,5 @@ table.breakdown td.neg { color: var(--danger); }
 .req-popup-actions { display: flex; gap: 6px; align-items: center; }
 @keyframes pop { from { transform: translate(-50%, -20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .req-popup { animation: none; } }
+.diag { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; font-size: 14px; }
+.diag li.bad b { color: var(--danger); }

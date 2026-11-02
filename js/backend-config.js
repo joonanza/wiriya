@@ -9,5 +9,5 @@
 // anon key เปิดเผยได้ (ออกแบบมาให้อยู่ฝั่งเว็บ) ความปลอดภัยมาจาก Row Level Security ใน schema.sql
 // ห้ามใส่ service_role key ในไฟล์นี้เด็ดขาด
 
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+export const SUPABASE_URL = 'https://vvetegfuvijnxibmvqkn.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZXRlZ2Z1dmlqbnhpYm12cWtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2MDkzODEsImV4cCI6MjEwOTE4NTM4MX0.r8ELuIhqwV6c0VxkflxyqBT4R7EQ6nr11JkIDT2eN_M';
