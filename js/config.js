@@ -1,12 +1,13 @@
 // ===== Fare config: ค่าเริ่มต้นคำนวณจาก cost model และเก็บค่าที่แก้ไว้ใน localStorage =====
 import { DEFAULT_COST_INPUTS, recommendRates } from './cost.js';
 
-const FARE_KEY = 'wiriya.fareConfig.v2';
+const FARE_KEY = 'wiriya.fareConfig.v3';
 const COST_KEY = 'wiriya.costInputs.v2';
 
 export function buildFareConfig(rates, overrides = {}) {
   return {
-    business: { name: 'วิริยะ รถรับส่ง', phone: '', lineOaId: '' },
+    // lineId = LINE ID ส่วนตัว (เปิดหน้าโปรไฟล์ + คัดลอกข้อความให้ลูกค้าวาง), lineOaId = LINE Official Account (ส่งข้อความได้ตรง)
+    business: { name: 'วิริยะ รถรับส่ง', phone: '', lineId: 'journiako', lineOaId: '' },
     baseFare: 40,
     perMinute: rates.perMinute,
     distanceTiers: rates.distanceTiers,

@@ -226,14 +226,52 @@ function updateBooking() {
   if (!state.fare) return;
   const text = encodeURIComponent(bookingText());
   const oa = (cfg.business?.lineOaId || '').trim();
-  // มี LINE OA → ส่งข้อความเข้า OA โดยตรง, ไม่มี → เปิดหน้าแชร์ของ LINE
-  $('lineBtn').href = oa
-    ? `https://line.me/R/oaMessage/${encodeURIComponent(oa.startsWith('@') ? oa : '@' + oa)}/?${text}`
-    : `https://line.me/R/msg/text/?${text}`;
+  const lineId = (cfg.business?.lineId || '').trim().replace(/^~/, '');
+  const btn = $('lineBtn');
+  const hint = $('lineHint');
+  hint.hidden = true;
+  if (oa) {
+    // LINE OA: เปิดแชทพร้อมข้อความที่กรอกไว้ให้แล้ว
+    btn.href = `https://line.me/R/oaMessage/${encodeURIComponent(oa.startsWith('@') ? oa : '@' + oa)}/?${text}`;
+    btn.textContent = 'ส่งทาง LINE';
+  } else if (lineId) {
+    // LINE ID ส่วนตัว: LINE ไม่มีลิงก์ที่ใส่ข้อความล่วงหน้าได้ → คัดลอกข้อความให้ แล้วเปิดหน้าโปรไฟล์
+    btn.href = `https://line.me/ti/p/~${encodeURIComponent(lineId)}`;
+    btn.textContent = `คัดลอก + เปิด LINE (${lineId})`;
+    hint.textContent = 'กดแล้วระบบจะคัดลอกรายละเอียดการจองให้อัตโนมัติ เมื่อ LINE เปิดขึ้นมา ให้กด "แชท" แล้ว "วาง" ข้อความส่งได้เลย';
+    hint.hidden = false;
+  } else {
+    // ไม่ได้ตั้งค่า: เปิดหน้าแชร์ของ LINE ให้ลูกค้าเลือกผู้รับเอง
+    btn.href = `https://line.me/R/msg/text/?${text}`;
+    btn.textContent = 'ส่งทาง LINE';
+  }
   const phone = (cfg.business?.phone || '').replace(/[^\d+]/g, '');
   $('callBtn').hidden = !phone;
   if (phone) { $('callBtn').href = `tel:${phone}`; $('callBtn').textContent = `โทร ${cfg.business.phone}`; }
 }
+
+// คัดลอกแบบ synchronous (ต้องอยู่ใน click handler โดยตรง ไม่งั้น iOS Safari บล็อก)
+function copySync(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+  document.body.append(ta);
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+$('lineBtn').addEventListener('click', () => {
+  if (cfg.business?.lineOaId || !cfg.business?.lineId) return; // OA / share: ข้อความอยู่ในลิงก์แล้ว
+  const text = bookingText();
+  const ok = copySync(text);
+  if (!ok) navigator.clipboard?.writeText(text).catch(() => {});
+  toast('คัดลอกรายละเอียดแล้ว ให้วางในแชท LINE');
+});
 
 $('copyBtn').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(bookingText()); toast('คัดลอกแล้ว'); }
