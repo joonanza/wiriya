@@ -1,6 +1,7 @@
 // ===== หน้าลูกค้า: เลือกเส้นทาง → ส่งคำขอจองเข้าระบบของคนขับ (บันทึกประวัติทั้งฝั่งคนขับและในเครื่องลูกค้า) =====
 import { getStore } from './store.js';
 import { createTripPlanner } from './trip.js';
+import { collectRecentPlaces } from './geo.js';
 import {
   $, esc, baht, toast, copySync, normalizePhone, phoneDisplay, fmtDateTime, mapsDirLink, shortPlace,
 } from './ui.js';
@@ -18,11 +19,16 @@ $('priceNote').textContent = showPrice
   ? 'ราคาเป็นการประเมินจากเส้นทาง คนขับจะยืนยันราคาสุดท้ายกับคุณอีกครั้ง'
   : 'คนขับจะคำนวณและแจ้งราคาให้คุณทาง SMS / LINE / โทร';
 
-const planner = createTripPlanner(cfg, { onUpdate: refreshBooking, showPrice });
-
-// ---------- จดจำข้อมูลลูกค้าในเครื่อง ----------
 const readJson = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d; } catch { return d; } };
 const writeJson = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage ถูกบล็อก */ } };
+
+const planner = createTripPlanner(cfg, {
+  onUpdate: refreshBooking,
+  showPrice,
+  recentPlaces: async () => collectRecentPlaces(readJson(MY_REQ_KEY, [])),
+});
+
+// ---------- จดจำข้อมูลลูกค้าในเครื่อง ----------
 
 function saveMe() {
   if ($('rememberMe').checked) {

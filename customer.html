@@ -21,7 +21,7 @@
         <div class="field">
           <label for="pickup"><span class="dot a"></span>จุดรับ</label>
           <div class="place-input">
-            <input id="pickup" autocomplete="off" placeholder="ค้นหาสถานที่ หรือแตะบนแผนที่">
+            <input id="pickup" autocomplete="off" placeholder="ชื่อสถานที่ / ถนน / วางลิงก์ Google Maps">
             <button class="icon" id="gpsBtn" type="button" title="ใช้ตำแหน่งปัจจุบัน" aria-label="ใช้ตำแหน่งปัจจุบัน">📍</button>
           </div>
           <ul class="suggest" id="pickupSuggest" hidden></ul>
@@ -29,11 +29,12 @@
         <div class="field">
           <label for="dropoff"><span class="dot b"></span>จุดส่ง</label>
           <div class="place-input">
-            <input id="dropoff" autocomplete="off" placeholder="ค้นหาสถานที่ หรือแตะบนแผนที่">
+            <input id="dropoff" autocomplete="off" placeholder="ชื่อสถานที่ / ถนน / วางลิงก์ Google Maps">
             <button class="icon" id="swapBtn" type="button" title="สลับจุดรับ-ส่ง" aria-label="สลับจุดรับ-ส่ง">⇅</button>
           </div>
           <ul class="suggest" id="dropoffSuggest" hidden></ul>
         </div>
+        <p class="muted search-hint">💡 พิมพ์แค่บางส่วนก็ได้ เช่น "เซ็นทรัล ชลบุรี", "ธันเดอร์โดม" หรือวางลิงก์/พิกัดจาก Google Maps · แตะช่องเพื่อเลือกสถานที่ที่เคยใช้</p>
         <div class="row">
           <div class="field"><label for="vehicle">ประเภทรถ</label><select id="vehicle"></select></div>
           <div class="field"><label for="datetime">วัน-เวลารับ</label><input id="datetime" type="datetime-local"></div>

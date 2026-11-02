@@ -2,10 +2,12 @@
 // ต้องมี element: pickup, dropoff, pickupSuggest, dropoffSuggest, gpsBtn, swapBtn, vehicle, datetime,
 //                toll, wait, roundTrip, airport, map, quote
 import { calculateFare } from './pricing.js';
-import { searchPlaces, reverseGeocode, getRoute } from './geo.js';
-import { $, esc, baht, bahtExact, toast, toLocalInput } from './ui.js';
+import { searchPlaces, reverseGeocode, getRoute, isShortMapsLink } from './geo.js';
+import { $, esc, baht, bahtExact, toast, toLocalInput, shortPlace } from './ui.js';
 
-export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true } = {}) {
+const join2 = (a, b) => [a, b].filter(Boolean).join(', ');
+
+export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true, recentPlaces = async () => [] } = {}) {
   const state = { pickup: null, dropoff: null, route: null, fare: null, trip: null };
 
   // ---------- ตัวเลือก ----------
@@ -65,36 +67,89 @@ export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true }
   }
 
   // ---------- ค้นหาสถานที่ ----------
+  // แตะช่อง → แสดงสถานที่ที่เคยใช้ · พิมพ์ ≥ 2 ตัว → ค้นจาก Photon + Nominatim (เรียงตามความใกล้) · วางลิงก์/พิกัด Google Maps ได้
+  const near = () => {
+    if (hasMap) { const c = map.getCenter(); return { lat: c.lat, lng: c.lng }; }
+    return state.pickup || { lat: 13.7563, lng: 100.5018 };
+  };
+  let recentCache = null;
+  const getRecent = async () => {
+    if (!recentCache) { try { recentCache = (await recentPlaces()) || []; } catch { recentCache = []; } }
+    return recentCache;
+  };
+  const kmLabel = (d) => (d == null ? '' : d < 1 ? `${Math.round(d * 1000)} m` : `${d < 10 ? d.toFixed(1) : Math.round(d)} km`);
+  const titleOf = (it) => it.title || shortPlace(it.name, 1);
+  const subOf = (it) => it.subtitle ?? shortPlace(String(it.name || '').split(',').slice(1).join(','), 3);
+
   function setupAutocomplete(which) {
     const input = $(which);
     const list = $(`${which}Suggest`);
-    let timer, ctrl, items = [], active = -1;
+    let timer, ctrl, items = [], active = -1, seq = 0;
     const close = () => { list.hidden = true; active = -1; };
-    const render = () => {
-      list.replaceChildren(...items.map((it, i) => {
+    const render = (header) => {
+      const lis = items.map((it, i) => {
         const li = document.createElement('li');
-        li.textContent = it.name;
-        li.className = i === active ? 'active' : '';
+        li.className = `sugg ${i === active ? 'active' : ''}`;
+        const icon = it.source === 'recent' ? '🕘' : it.source === 'coords' ? '📍' : '📌';
+        li.innerHTML = `<span class="sugg-ico" aria-hidden="true">${icon}</span>
+          <span class="sugg-txt"><b>${esc(titleOf(it))}</b>${subOf(it) ? `<span class="muted">${esc(subOf(it))}</span>` : ''}</span>
+          ${it.distanceKm != null ? `<span class="sugg-dist muted">${kmLabel(it.distanceKm)}</span>` : ''}`;
         li.addEventListener('mousedown', (e) => { e.preventDefault(); choose(i); });
         return li;
-      }));
-      list.hidden = items.length === 0;
+      });
+      if (header) {
+        const h = document.createElement('li');
+        h.className = 'sugg-head'; h.textContent = header;
+        lis.unshift(h);
+      }
+      list.replaceChildren(...lis);
+      list.hidden = lis.length === 0;
     };
     const choose = (i) => {
       const it = items[i]; if (!it) return;
       close();
-      setPlace(which, it, it.name);
-      if (hasMap) map.setView([it.lat, it.lng], Math.max(map.getZoom(), 13));
+      setPlace(which, it, it.source === 'coords' ? null : (it.name || join2(titleOf(it), subOf(it))));
+      if (hasMap) map.setView([it.lat, it.lng], Math.max(map.getZoom(), 14));
     };
+    const showRecent = async (q = '') => {
+      const recent = await getRecent();
+      const t = q.trim().toLowerCase();
+      items = recent.filter((r) => !t || String(r.name || '').toLowerCase().includes(t)).slice(0, t ? 3 : 6)
+        .map((r) => ({ ...r, source: 'recent', distanceKm: null }));
+      active = -1;
+      render(items.length && !t ? 'สถานที่ที่เคยใช้' : null);
+    };
+    input.addEventListener('focus', () => { if (input.value.trim().length < 2 || input.value === state[which]?.name) showRecent(''); });
     input.addEventListener('input', () => {
       clearTimeout(timer);
       const q = input.value.trim();
-      if (q.length < 3) { items = []; close(); return; }
+      if (isShortMapsLink(q)) {
+        items = []; render();
+        toast('ลิงก์ย่อ maps.app.goo.gl อ่านพิกัดไม่ได้ ให้เปิดลิงก์ใน Google Maps แล้วคัดลอกพิกัด (กดค้างที่หมุด) มาวางแทน');
+        return;
+      }
+      if (q.length < 2) { showRecent(''); return; }
+      const my = ++seq;
+      // แสดงสถานที่ที่เคยใช้ที่ตรงกันก่อน ระหว่างรอผลค้นหา
+      showRecent(q);
       timer = setTimeout(async () => {
         ctrl?.abort(); ctrl = new AbortController();
-        try { items = await searchPlaces(q, { signal: ctrl.signal }); active = -1; render(); }
-        catch (err) { if (err.name !== 'AbortError') toast(err.message || 'ค้นหาไม่สำเร็จ'); }
-      }, 600);
+        list.classList.add('loading');
+        try {
+          const found = await searchPlaces(q, { signal: ctrl.signal, near: near() });
+          if (my !== seq) return;
+          const recent = items.filter((x) => x.source === 'recent');
+          items = [...recent, ...found].slice(0, 9);
+          active = -1;
+          render();
+          if (!items.length) {
+            list.replaceChildren(Object.assign(document.createElement('li'), { className: 'sugg-head', textContent: 'ไม่พบสถานที่ ลองพิมพ์ชื่ออื่น ชื่อถนน หรือแตะบนแผนที่' }));
+            list.hidden = false;
+          }
+        } catch (err) {
+          if (err.name !== 'AbortError') toast(err.message || 'ค้นหาไม่สำเร็จ');
+        } finally { list.classList.remove('loading'); }
+      }, 350);
     });
     input.addEventListener('keydown', (e) => {
       if (list.hidden) return;

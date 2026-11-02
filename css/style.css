@@ -270,3 +270,15 @@ table.breakdown td.neg { color: var(--danger); }
 @media (prefers-reduced-motion: reduce) { .req-popup { animation: none; } }
 .diag { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; font-size: 14px; }
 .diag li.bad b { color: var(--danger); }
+
+/* ===== ผลค้นหาสถานที่ ===== */
+.suggest li.sugg { display: flex; align-items: flex-start; gap: 8px; }
+.sugg-ico { flex: none; width: 18px; text-align: center; }
+.sugg-txt { flex: 1; min-width: 0; display: grid; }
+.sugg-txt b { font-weight: 600; font-size: 14px; }
+.sugg-txt .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sugg-dist { flex: none; font-size: 12px; }
+.suggest li.sugg-head { font-size: 12px; color: var(--muted); cursor: default; padding: 6px 8px 2px; }
+.suggest li.sugg-head:hover { background: none; }
+.suggest.loading { opacity: .85; }
+.search-hint { margin: -4px 0 10px; font-size: 12px; }

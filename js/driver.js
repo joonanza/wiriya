@@ -1,6 +1,7 @@
 // ===== หน้าคนขับ: คำนวณราคา → ปรับราคา → ส่งใบเสนอราคาให้ลูกค้า (SMS / LINE / WhatsApp / คัดลอก) =====
 import { requireDriver } from './auth.js';
 import { createTripPlanner } from './trip.js';
+import { collectRecentPlaces } from './geo.js';
 import { computeCostPerKm } from './cost.js';
 import {
   $, esc, baht, toast, copySync, normalizePhone, phoneDisplay, fmtDateTime, shortPlace,
@@ -19,7 +20,10 @@ let customer = { id: null, phone: '' };  // ลูกค้าที่เลื
 let quotedManual = false;                // คนขับแก้ราคาเองแล้ว
 let msgManual = false;                   // คนขับแก้ข้อความเองแล้ว
 
-const planner = createTripPlanner(cfg, { onUpdate: refreshOffer });
+const planner = createTripPlanner(cfg, {
+  onUpdate: refreshOffer,
+  recentPlaces: async () => collectRecentPlaces(await store.listQuotes({ limit: 200 })),
+});
 
 // ================= ลูกค้า =================
 function setupCustomerSearch(inputId) {
