@@ -148,7 +148,9 @@ $('submitBtn').addEventListener('click', async () => {
       fare_calc: st.fare.total,
       note: $('custNote').value.trim(),
     };
-    await store.submitRequest(payload);
+    const requestId = await store.submitRequest(payload);
+    // แจ้งคนขับทาง LINE OA (ถ้าส่ง LINE ไม่สำเร็จ คำขอยังอยู่ในระบบ คนขับเห็นในแอป)
+    store.notifyLine(requestId).catch((err) => console.warn('แจ้ง LINE ไม่สำเร็จ', err));
     saveMe();
     const mine = readJson(MY_REQ_KEY, []);
     mine.unshift({ pickup: payload.pickup, dropoff: payload.dropoff, pickup_at: payload.pickup_at, options: payload.options, sent_at: new Date().toISOString() });

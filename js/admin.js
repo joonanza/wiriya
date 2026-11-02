@@ -24,6 +24,22 @@ async function persistFare(msg) {
   catch (e) { toast(`บันทึกไม่สำเร็จ: ${e.message}`); }
 }
 
+// ทดสอบแจ้งเตือน LINE OA
+if (store.mode !== 'supabase') {
+  $('testLineBtn').disabled = true;
+  $('lineStatus').textContent = '⚠️ ต้องเชื่อมฐานข้อมูล Supabase ก่อน จึงจะส่งแจ้งเตือนผ่าน LINE OA ได้';
+}
+$('testLineBtn').onclick = async () => {
+  $('testLineBtn').disabled = true;
+  $('lineStatus').textContent = 'กำลังส่ง…';
+  try {
+    await store.testLine();
+    $('lineStatus').textContent = '✅ ส่งแล้ว ลองเช็ก LINE ของคุณ';
+  } catch (e) {
+    $('lineStatus').textContent = `❌ ส่งไม่สำเร็จ: ${e.message}`;
+  } finally { $('testLineBtn').disabled = false; }
+};
+
 // ลิงก์สำหรับลูกค้า
 const custUrl = new URL('customer.html', location.href).href;
 $('custLink').value = custUrl;

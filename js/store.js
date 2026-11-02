@@ -147,6 +147,9 @@ function createLocalStore() {
     },
     async deleteExpense(id) { writeArr(K_EXP, readArr(K_EXP).filter((x) => x.id !== id)); },
 
+    async notifyLine() { return { skipped: true }; },
+    async testLine() { throw new Error('ต้องเชื่อมฐานข้อมูล Supabase ก่อน'); },
+
     /** แจ้งเตือนคำขอใหม่แบบ real-time (โหมดในเครื่องไม่มีคำขอจากเครื่องอื่น) */
     subscribeRequests() { return () => {}; },
 
@@ -257,6 +260,22 @@ async function createSupabaseStore() {
           (payload) => onNew(payload.new))
         .subscribe();
       return () => sb.removeChannel(ch);
+    },
+
+    /** เรียก Edge Function ส่ง LINE OA หาคนขับ (function ตรวจเองว่าเป็นคำขอใหม่จริง) */
+    async notifyLine(id) {
+      const { data, error } = await sb.functions.invoke('notify-line', { body: { id } });
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    async testLine() {
+      const { data, error } = await sb.functions.invoke('notify-line', { body: { test: true } });
+      if (error) {
+        let msg = error.message;
+        try { msg = (await error.context.json()).error || msg; } catch { /* ignore */ }
+        throw new Error(msg);
+      }
+      return data;
     },
 
     canSubmitRequest: true,

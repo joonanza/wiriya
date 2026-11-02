@@ -32,6 +32,7 @@ npm test       # unit test ของ pricing engine และ cost model
 - ยังไม่ได้ตั้งค่า → **โหมดเก็บข้อมูลในเครื่อง** (localStorage) ใช้ได้ทันที แต่ข้อมูลอยู่แค่ในเบราว์เซอร์นั้น
 - ใส่ key ใน `js/backend-config.js` → **Supabase** (PostgreSQL + ล็อกอินคนขับ + Row Level Security)
 - วิธีตั้งค่า: [docs/backend-setup.md](docs/backend-setup.md) · schema: [supabase/schema.sql](supabase/schema.sql)
+- แจ้งเตือนคำขอจองเข้า LINE ของคนขับ (LINE OA + Edge Function `notify-line`): [docs/line-oa-setup.md](docs/line-oa-setup.md)
 
 ## โครงสร้างโค้ด
 
@@ -53,6 +54,7 @@ js/config.js       ค่าเริ่มต้นเรทราคา
 js/geo.js          Nominatim + OSRM + fallback
 js/ui.js           helper: เบอร์โทร, ลิงก์ SMS/WhatsApp/LINE, สถานะ ฯลฯ
 supabase/schema.sql
+supabase/functions/notify-line/   Edge Function ส่ง LINE OA (handler.js + message.js test ได้ใน Node)
 ```
 
 ## สูตรราคา

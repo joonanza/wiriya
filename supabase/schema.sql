@@ -41,6 +41,7 @@ create table if not exists public.quotes (
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
 );
+alter table public.quotes add column if not exists line_notified_at timestamptz; -- แจ้ง LINE OA แล้วเมื่อไร (กันส่งซ้ำ)
 create index if not exists quotes_created_idx  on public.quotes (created_at desc);
 create index if not exists quotes_customer_idx on public.quotes (customer_id);
 create index if not exists quotes_status_idx   on public.quotes (status);
