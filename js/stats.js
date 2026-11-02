@@ -99,3 +99,100 @@ export function upcomingJobs(quotes, now = new Date(), limit = 5) {
     .sort((a, b) => new Date(a.pickup_at) - new Date(b.pickup_at))
     .slice(0, limit);
 }
+
+/** ช่วงเวลาที่รถไม่ว่างของงานหนึ่ง (นาที): เวลาเดินทาง (×2 ถ้าไป-กลับ) + ค่ารอ */
+export function busyMinutes(q) {
+  const o = q.options || {};
+  return (Number(q.duration_min) || 60) * (o.roundTrip ? 2 : 1) + (Number(o.waitHours) || 0) * 60;
+}
+
+/**
+ * หางานที่เวลาชนกับทริปใหม่
+ * @param quotes   รายการงานทั้งหมด
+ * @param trip     { start: Date, busyMin: number }
+ * @param opts     { excludeId, bufferMin = 30 (เผื่อเวลาเดินทางไปจุดรับ), statuses = ['confirmed','sent'] }
+ * @returns [{ q, start: Date, end: Date }] เรียงตามเวลา
+ */
+export function findConflicts(quotes, trip, { excludeId = null, bufferMin = 30, statuses = ['confirmed', 'sent'] } = {}) {
+  if (!(trip?.start instanceof Date) || Number.isNaN(trip.start.getTime())) return [];
+  const aStart = trip.start.getTime() - bufferMin * 60000;
+  const aEnd = trip.start.getTime() + (trip.busyMin || 60) * 60000 + bufferMin * 60000;
+  return quotes
+    .filter((q) => q.id !== excludeId && statuses.includes(q.status) && q.pickup_at)
+    .map((q) => {
+      const start = new Date(q.pickup_at);
+      return { q, start, end: new Date(start.getTime() + busyMinutes(q) * 60000) };
+    })
+    .filter(({ start, end }) => start.getTime() < aEnd && aStart < end.getTime())
+    .sort((a, b) => a.start - b.start);
+}
+
+// ---------------------------------------------------------------- หน้าแรก: ปฏิทิน + สรุปรายเดือน
+const CAL_STATUSES = ['request', 'sent', 'confirmed', 'done'];
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+export const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** ตารางปฏิทิน 6 สัปดาห์ (เริ่มวันอาทิตย์) ของเดือนที่กำหนด */
+export function monthGrid(year, month) {
+  const first = new Date(year, month, 1);
+  const start = new Date(year, month, 1 - first.getDay());
+  const weeks = [];
+  for (let w = 0; w < 6; w++) {
+    const days = [];
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + d);
+      days.push({ date, inMonth: date.getMonth() === month });
+    }
+    weeks.push(days);
+  }
+  // ตัดสัปดาห์สุดท้ายที่ไม่มีวันของเดือนนี้เลย
+  while (weeks.length > 4 && weeks.at(-1).every((x) => !x.inMonth)) weeks.pop();
+  return weeks;
+}
+
+/** งานที่เวลารับตรงกับวันนั้น (ไม่รวมร่าง/ยกเลิก) เรียงตามเวลา */
+export function jobsOnDay(quotes, date) {
+  return quotes
+    .filter((q) => q.pickup_at && CAL_STATUSES.includes(q.status) && sameDay(new Date(q.pickup_at), date))
+    .sort((a, b) => new Date(a.pickup_at) - new Date(b.pickup_at));
+}
+
+/** map dayKey → งานในเดือนนั้น (ใช้วาดจุดบนปฏิทิน) */
+export function jobsByDay(quotes, year, month) {
+  const map = new Map();
+  for (const q of quotes) {
+    if (!q.pickup_at || !CAL_STATUSES.includes(q.status)) continue;
+    const d = new Date(q.pickup_at);
+    if (d.getFullYear() !== year || d.getMonth() !== month) continue;
+    const k = dayKey(d);
+    (map.get(k) || map.set(k, []).get(k)).push(q);
+  }
+  return map;
+}
+
+/** สรุปงานที่ยืนยัน/เสร็จในเดือน (นับตามเวลารับ รวมงานที่จะถึง) */
+export function monthStats(quotes, year, month, now = new Date()) {
+  const inMonth = quotes.filter((q) => (q.status === 'confirmed' || q.status === 'done') && q.pickup_at
+    && new Date(q.pickup_at).getFullYear() === year && new Date(q.pickup_at).getMonth() === month);
+  const done = inMonth.filter((q) => isCompleted(q, now));
+  const sum = (arr) => arr.reduce((s, q) => s + (Number(q.fare_quoted) || 0), 0);
+  return {
+    jobs: inMonth.length,
+    done: done.length,
+    upcoming: inMonth.length - done.length,
+    revenue: sum(inMonth),
+    revenueDone: sum(done),
+    km: inMonth.reduce((s, q) => s + tripKm(q), 0),
+  };
+}
+
+/** ข้อมูลกราฟย้อนหลัง n เดือน สิ้นสุดที่เดือนที่เลือก */
+export function monthTrend(quotes, year, month, n = 6, now = new Date()) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(year, month - i, 1);
+    const s = monthStats(quotes, d.getFullYear(), d.getMonth(), now);
+    out.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString('th-TH', { month: 'short' }), ...s });
+  }
+  return out;
+}

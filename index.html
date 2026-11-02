@@ -21,43 +21,92 @@
     </nav>
   </header>
 
-  <main class="narrow">
-    <section class="hero">
-      <div>
-        <div class="muted" id="today"></div>
-        <h2 class="hero-title" id="greeting">สวัสดีครับ</h2>
+  <main class="home">
+    <section class="home-main">
+      <div class="hero">
+        <div>
+          <div class="muted" id="today"></div>
+          <h2 class="hero-title" id="greeting">สวัสดีครับ</h2>
+        </div>
+        <a class="btn primary big-btn" href="quote.html">+ เสนอราคาใหม่</a>
       </div>
-      <a class="btn primary big-btn" href="quote.html">+ เสนอราคาใหม่</a>
+
+      <a class="card alert-card" id="requestAlert" href="history.html?status=request" hidden></a>
+
+      <div class="home-head">
+        <h2><span id="sumTitle">สรุป</span> <span class="muted small" id="sumSub"></span></h2>
+        <div class="month-nav">
+          <button type="button" class="icon" id="mPrev" aria-label="เดือนก่อน">‹</button>
+          <button type="button" class="icon" id="mNext" aria-label="เดือนถัดไป">›</button>
+        </div>
+      </div>
+      <div class="spark-grid">
+        <div class="card spark-card">
+          <div class="k">งาน / เดือน</div>
+          <div class="v num" id="jobsVal">0 งาน</div>
+          <div class="muted small" id="jobsSub"></div>
+          <div class="spark" id="jobsSpark"></div>
+        </div>
+        <div class="card spark-card">
+          <div class="k">รายได้ / เดือน</div>
+          <div class="v num" id="revVal">0 ฿</div>
+          <div class="muted small" id="revSub"></div>
+          <div class="spark" id="revSpark"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>งานที่จะถึง</h2><a class="link-btn" href="history.html?status=confirmed">ดูทั้งหมด</a></div>
+        <div id="upcoming" class="list compact"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>รอลูกค้ายืนยัน</h2><a class="link-btn" href="history.html?status=sent">ดูทั้งหมด</a></div>
+        <div id="pending" class="list compact"></div>
+      </div>
+
+      <div class="card">
+        <h2>ลิงก์ให้ลูกค้าจอง</h2>
+        <p class="muted">ส่งลิงก์นี้ให้ลูกค้า แล้วคำขอจองจะเด้งเข้ามาในแอปนี้</p>
+        <div class="toolbar">
+          <input id="custLink" readonly>
+          <button type="button" id="shareLink">แชร์</button>
+        </div>
+        <div class="actions" id="notifyRow" hidden>
+          <button type="button" id="notifyBtn">🔔 เปิดการแจ้งเตือนบนมือถือ</button>
+        </div>
+        <p class="muted" id="notifyNote"></p>
+      </div>
     </section>
 
-    <a class="card alert-card" id="requestAlert" href="history.html?status=request" hidden></a>
-
-    <div class="kpis" id="kpis"></div>
-
-    <div class="card">
-      <div class="card-head"><h2>งานที่จะถึง</h2><a class="link-btn" href="history.html?status=confirmed">ดูทั้งหมด</a></div>
-      <div id="upcoming" class="list compact"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-head"><h2>รอลูกค้ายืนยัน</h2><a class="link-btn" href="history.html?status=sent">ดูทั้งหมด</a></div>
-      <div id="pending" class="list compact"></div>
-    </div>
-
-    <div class="card">
-      <h2>ลิงก์ให้ลูกค้าจอง</h2>
-      <p class="muted">ส่งลิงก์นี้ให้ลูกค้า แล้วคำขอจองจะเด้งเข้ามาในแอปนี้</p>
-      <div class="toolbar">
-        <input id="custLink" readonly>
-        <button type="button" id="shareLink">แชร์</button>
+    <aside class="home-side">
+      <div class="card cal-card">
+        <div class="card-head">
+          <h2 id="calTitle">ปฏิทิน</h2>
+          <div class="month-nav">
+            <button type="button" class="icon" id="cPrev" aria-label="เดือนก่อน">‹</button>
+            <button type="button" class="icon" id="cNext" aria-label="เดือนถัดไป">›</button>
+          </div>
+        </div>
+        <div class="cal" id="cal" role="grid" aria-label="ปฏิทินงาน"></div>
+        <div class="cal-legend">
+          <span><i class="dot-s st-confirmed-dot"></i>ยืนยัน/เสร็จ</span>
+          <span><i class="dot-s st-sent-dot"></i>รอยืนยัน</span>
+          <span><i class="dot-s st-request-dot"></i>คำขอใหม่</span>
+        </div>
       </div>
-      <div class="actions" id="notifyRow" hidden>
-        <button type="button" id="notifyBtn">🔔 เปิดการแจ้งเตือนบนมือถือ</button>
+      <div class="card">
+        <div class="card-head"><h2 id="day1Title">วันนี้</h2><span class="muted small" id="day1Sum"></span></div>
+        <div id="day1" class="list compact"></div>
       </div>
-      <p class="muted" id="notifyNote"></p>
-    </div>
+      <div class="card">
+        <div class="card-head"><h2 id="day2Title">พรุ่งนี้</h2><span class="muted small" id="day2Sum"></span></div>
+        <div id="day2" class="list compact"></div>
+      </div>
+    </aside>
   </main>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="chart-tip" id="chartTip" hidden></div>
   <script type="module" src="js/home.js"></script>
 </body>
 </html>

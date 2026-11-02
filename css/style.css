@@ -297,3 +297,65 @@ table.breakdown td.neg { color: var(--danger); }
 #actions .link-btn { display: block; margin: 12px auto 0; }
 #changeBox { margin-top: 12px; }
 .center-text { text-align: center; }
+.conflict { background: var(--warn-soft); color: var(--warn); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 14px; }
+.conflict ul { margin: 6px 0; padding-left: 18px; color: var(--text); }
+.conflict a { color: inherit; font-weight: 600; }
+
+/* ===== หน้าแรกแบบใหม่: สรุป + กราฟ + ปฏิทิน ===== */
+main.home { max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.home-main, .home-side { display: grid; gap: 16px; min-width: 0; }
+.home-main > .card + .card, .home-side > .card + .card { margin-top: 0; }
+.home .hero { margin-bottom: 0; }
+.home .alert-card { margin-bottom: 0; }
+@media (max-width: 960px) {
+  main.home { grid-template-columns: 1fr; }
+  .home-side { order: -1; }           /* มือถือ: ปฏิทินและงานวันนี้ขึ้นก่อน */
+  .home-main { display: contents; }
+  .home .hero { order: -3; }
+  .home #requestAlert { order: -2; }
+}
+.home-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.home-head h2 { font-size: 16px; margin: 0; }
+.month-nav { display: flex; gap: 6px; }
+.month-nav .icon { padding: 4px 10px; }
+.spark-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 560px) { .spark-grid { grid-template-columns: 1fr; } }
+.spark-card { display: grid; gap: 2px; }
+.spark-card .k { font-size: 13px; color: var(--muted); }
+.spark-card .v { font-size: 26px; font-weight: 700; }
+.spark { margin-top: 6px; }
+.spark svg { width: 100%; height: auto; display: block; overflow: visible; }
+.spark .baseline { stroke: var(--border); stroke-width: 1; }
+.spark .spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.spark .spark-area { fill: var(--accent); opacity: .10; }
+.spark .pt { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.spark .pt-current { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.spark circle.hover { r: 5.5; }
+.spark .axis { fill: var(--muted); font-size: 11px; font-family: inherit; }
+.spark-pt { cursor: pointer; outline: none; }
+
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-h { text-align: center; font-size: 12px; color: var(--muted); padding: 4px 0; }
+.cal-d { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; padding: 6px 0 4px;
+  min-height: 44px; border: 0; border-radius: 10px; background: none; font: inherit; color: var(--text); cursor: pointer; }
+.cal-d:hover { background: var(--surface-2); }
+.cal-d.out { color: var(--muted); opacity: .45; }
+.cal-d.today .cal-n { color: var(--accent); font-weight: 700; }
+.cal-d.sel { background: var(--accent); color: var(--accent-ink); }
+.cal-d.sel .cal-n { color: inherit; }
+.cal-n { font-size: 14px; line-height: 1.2; }
+.cal-dots { display: flex; gap: 2px; height: 6px; align-items: center; font-size: 9px; }
+.dot-s { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
+.st-confirmed-dot { background: var(--accent); }
+.st-sent-dot { background: var(--info); }
+.st-request-dot { background: var(--warn); }
+.cal-d.sel .dot-s { box-shadow: 0 0 0 1.5px var(--accent-ink); }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.cal-legend .dot-s { margin-right: 4px; }
+.day-job { display: grid; grid-template-columns: 48px 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border);
+  text-decoration: none; color: var(--text); font-size: 14px; }
+.list.compact .day-job:first-child { border-top: 0; }
+.day-time { font-weight: 700; color: var(--accent); }
+.day-txt { display: grid; min-width: 0; }
+.day-txt .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spark-grid .card + .card { margin-top: 0; }

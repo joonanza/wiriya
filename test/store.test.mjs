@@ -9,7 +9,7 @@ globalThis.localStorage = {
   removeItem: (k) => mem.delete(k),
 };
 
-const { createLocalStore, customerStats } = await import('../js/store.js');
+const { createLocalStore, customerStats, createErrorStore } = await import('../js/store.js');
 const { normalizePhone } = await import('../js/ui.js');
 
 let store;
@@ -62,4 +62,19 @@ test('quotes: save, update status, filter, stats, delete customer unlinks', asyn
 test('local mode cannot submit customer requests', async () => {
   assert.equal(store.canSubmitRequest, false);
   await assert.rejects(store.submitRequest({}));
+});
+
+test('error store: never silently writes locally; fare config falls back to last cached', async () => {
+  localStorage.setItem('wiriya.fareConfigCache.v1', JSON.stringify({ baseFare: 55, business: { name: 'ทดสอบ' } }));
+  const s = createErrorStore('Failed to fetch');
+  assert.equal(s.mode, 'error');
+  assert.equal(s.canSubmitRequest, false);
+  await assert.rejects(s.saveQuote({ fare_quoted: 1 }), /เชื่อมต่อฐานข้อมูลไม่ได้/);
+  await assert.rejects(s.listQuotes(), /เชื่อมต่อฐานข้อมูลไม่ได้/);
+  await assert.rejects(s.upsertCustomer({ name: 'x', phone: '0811111111' }), /เชื่อมต่อฐานข้อมูลไม่ได้/);
+  assert.equal(localStorage.getItem('wiriya.quotes.v1'), null);
+  assert.equal((await s.getFareConfig()).baseFare, 55);
+  // ต้อง await ได้ (ไม่ถูกมองเป็น thenable)
+  const awaited = await Promise.race([Promise.resolve(s), new Promise((r) => setTimeout(() => r('HANG'), 500))]);
+  assert.equal(awaited.mode, 'error');
 });

@@ -8,6 +8,18 @@ import { $, esc, toast, shortPlace } from './ui.js';
  */
 export async function requireDriver() {
   const store = await getStore();
+  if (store.mode === 'error') {
+    // ไม่ให้ทำงานต่อในโหมดเก็บในเครื่อง → กันข้อมูลแยกเป็น 2 ที่
+    document.querySelector('main').innerHTML = `
+      <div class="card login-card">
+        <h2>⚠️ เชื่อมต่อฐานข้อมูลไม่ได้</h2>
+        <p class="muted">${esc(store.connectionError || '')}</p>
+        <p>ข้อมูลของคุณยังอยู่ครบในฐานข้อมูล ลองเช็กอินเทอร์เน็ตแล้วกดลองใหม่</p>
+        <button type="button" class="primary" id="retryConn" style="width:100%">ลองใหม่</button>
+      </div>`;
+    $('retryConn').onclick = () => location.reload();
+    return new Promise(() => {});
+  }
   renderModeBanner(store);
   updateRequestBadge(store);
   if (store.mode !== 'supabase') return store;

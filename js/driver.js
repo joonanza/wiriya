@@ -2,6 +2,7 @@
 import { requireDriver } from './auth.js';
 import { createTripPlanner } from './trip.js';
 import { collectRecentPlaces } from './geo.js';
+import { findConflicts } from './stats.js';
 import { computeCostPerKm } from './cost.js';
 import {
   $, esc, baht, toast, copySync, normalizePhone, phoneDisplay, fmtDateTime, shortPlace,
@@ -26,10 +27,33 @@ const confirmUrl = () => {
   return new URL(`confirm.html?t=${confirmToken}`, location.href).href;
 };
 
+// งานทั้งหมด (ใช้ทั้งสถานที่ที่เคยใช้ และเช็กเวลาชนกัน)
+let allQuotes = [];
+const quotesReady = store.listQuotes({ limit: 1000 }).then((qs) => { allQuotes = qs; return qs; }).catch(() => []);
+
 const planner = createTripPlanner(cfg, {
   onUpdate: refreshOffer,
-  recentPlaces: async () => collectRecentPlaces(await store.listQuotes({ limit: 200 })),
+  recentPlaces: async () => collectRecentPlaces((await quotesReady).slice(0, 200)),
 });
+quotesReady.then(() => renderConflicts());
+
+/** เตือนเมื่อเวลารับทับกับงานที่ยืนยันแล้ว / รอยืนยัน (เผื่อเวลาเดินทางไปจุดรับ 30 นาที) */
+function renderConflicts() {
+  const box = $('conflictBox');
+  const st = planner.state;
+  if (!st.fare || !st.trip) { box.hidden = true; return; }
+  const busyMin = st.fare.min + (st.trip.waitHours || 0) * 60;
+  const hits = findConflicts(allQuotes, { start: st.trip.datetime, busyMin }, { excludeId: editing?.id });
+  box.hidden = hits.length === 0;
+  if (!hits.length) return;
+  const t = (d) => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+  box.innerHTML = `<b>⚠️ เวลาชนกับงานอื่น ${hits.length} งาน</b>
+    <ul>${hits.map(({ q, start, end }) => `<li>
+      <a href="quote.html?quote=${encodeURIComponent(q.id)}" target="_blank" rel="noopener">${esc(q.customer_name || '(ไม่มีชื่อ)')}</a>
+      · ${esc(start.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }))} ${t(start)}–${t(end)}
+      · ${q.status === 'confirmed' ? 'ยืนยันแล้ว' : 'รอลูกค้ายืนยัน'}</li>`).join('')}</ul>
+    <span class="muted">เผื่อเวลาเดินทางไปจุดรับ 30 นาที · ยังส่งใบเสนอราคาได้ตามปกติ</span>`;
+}
 
 // ================= ลูกค้า =================
 function setupCustomerSearch(inputId) {
@@ -127,6 +151,7 @@ function refreshOffer(st) {
   $('resetQuoted').hidden = !quotedManual;
   renderProfit();
   refreshMessage();
+  renderConflicts();
 }
 
 function renderProfit() {

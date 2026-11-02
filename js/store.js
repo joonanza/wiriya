@@ -14,7 +14,27 @@ import {
 import { DEFAULT_COST_INPUTS } from './cost.js';
 import { normalizePhone } from './ui.js';
 
-const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
+// ไลบรารี Supabase เก็บไว้ในโปรเจกต์เอง (vendor/) ไม่พึ่ง CDN ตอนเปิดแอป
+const SUPABASE_JS_URL = new URL('../vendor/supabase/supabase.js', import.meta.url).href;
+const FARE_CACHE_KEY = 'wiriya.fareConfigCache.v1';
+
+/** โหลด vendor/supabase/supabase.js (UMD → window.supabase) พร้อม timeout */
+function loadSupabaseLib(timeoutMs = 15000) {
+  if (globalThis.supabase?.createClient) return Promise.resolve(globalThis.supabase);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    const timer = setTimeout(() => { s.remove(); reject(new Error('โหลดไลบรารีฐานข้อมูลไม่ทันเวลา')); }, timeoutMs);
+    s.src = SUPABASE_JS_URL;
+    s.async = true;
+    s.onload = () => {
+      clearTimeout(timer);
+      if (globalThis.supabase?.createClient) resolve(globalThis.supabase);
+      else reject(new Error('โหลดไลบรารีฐานข้อมูลไม่สำเร็จ'));
+    };
+    s.onerror = () => { clearTimeout(timer); reject(new Error('โหลดไลบรารีฐานข้อมูลไม่สำเร็จ (เช็กอินเทอร์เน็ต)')); };
+    document.head.append(s);
+  });
+}
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const nowIso = () => new Date().toISOString();
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
@@ -181,7 +201,7 @@ function createLocalStore() {
 
 // ---------------------------------------------------------------- Supabase
 async function createSupabaseStore() {
-  const { createClient } = await import(SUPABASE_JS);
+  const { createClient } = await loadSupabaseLib();
   const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true },
   });
@@ -210,6 +230,7 @@ async function createSupabaseStore() {
 
     async getFareConfig() {
       const v = await getSetting('fare_config').catch(() => null);
+      if (v) { try { localStorage.setItem(FARE_CACHE_KEY, JSON.stringify(v)); } catch { /* ignore */ } }
       return v ? { ...clone(DEFAULT_FARE_CONFIG), ...v } : clone(DEFAULT_FARE_CONFIG);
     },
     async saveFareConfig(cfg) { await setSetting('fare_config', cfg); },
@@ -365,15 +386,45 @@ async function createSupabaseStore() {
 // ---------------------------------------------------------------- entry
 export const backendConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
+/**
+ * ตั้งค่า Supabase ไว้แล้วแต่เชื่อมต่อไม่ได้ → ห้ามสลับไปเก็บในเครื่องเงียบ ๆ (ข้อมูลจะแยกเป็น 2 ที่)
+ * ทุกคำสั่งที่อ่าน/เขียนข้อมูลจะ error พร้อมข้อความชัดเจน ยกเว้นเรทราคาที่ใช้ค่าล่าสุดที่จำไว้
+ */
+export function createErrorStore(message) {
+  const fail = async () => { throw new Error(`เชื่อมต่อฐานข้อมูลไม่ได้: ${message}`); };
+  const cachedFare = () => {
+    try {
+      const v = JSON.parse(localStorage.getItem(FARE_CACHE_KEY) || 'null');
+      return v ? { ...clone(DEFAULT_FARE_CONFIG), ...v } : clone(DEFAULT_FARE_CONFIG);
+    } catch { return clone(DEFAULT_FARE_CONFIG); }
+  };
+  const target = {
+    mode: 'error',
+    connectionError: message,
+    canSubmitRequest: false,
+    canConfirmLinks: false,
+    async getSession() { return null; },
+    async isDriver() { return null; },
+    async getFareConfig() { return cachedFare(); },
+    async getCostInputs() { return clone(DEFAULT_COST_INPUTS); },
+    subscribeRequests() { return () => {}; },
+    subscribeResponses() { return () => {}; },
+    async countRequests() { return 0; },
+    async diagnose() { return [{ ok: false, label: 'เชื่อมต่อ Supabase', detail: message }]; },
+    async notifyLine() { return { skipped: true }; },
+    async notifyLineResponse() { return { skipped: true }; },
+  };
+  // ห้ามตอบ 'then' ไม่งั้น await getStore() จะมองว่าเป็น Promise แล้วค้าง
+  return new Proxy(target, { get: (t, k) => (k in t ? t[k] : (typeof k === 'string' && k !== 'then' && k !== 'toJSON' ? fail : undefined)) });
+}
+
 let storePromise;
 export function getStore() {
   if (!storePromise) {
     storePromise = backendConfigured
       ? createSupabaseStore().catch((err) => {
-        console.error('เชื่อมต่อ Supabase ไม่ได้ ใช้โหมดในเครื่องแทน', err);
-        const s = createLocalStore();
-        s.connectionError = err.message;
-        return s;
+        console.error('เชื่อมต่อ Supabase ไม่ได้', err);
+        return createErrorStore(err.message);
       })
       : Promise.resolve(createLocalStore());
   }

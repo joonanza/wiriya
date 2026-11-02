@@ -70,6 +70,11 @@ function render(q) {
 }
 
 async function load() {
+  if (store.mode === 'error') {
+    $('box').innerHTML = `<p class="notice">เชื่อมต่อระบบไม่ได้ (${esc(store.connectionError || '')})</p><button type="button" class="primary" onclick="location.reload()">ลองใหม่</button>`;
+    renderContact();
+    return null;
+  }
   if (!store.canConfirmLinks) {
     $('box').innerHTML = '<p class="notice">ระบบยืนยันออนไลน์ยังไม่พร้อม กรุณาตอบกลับคนขับทางข้อความ</p>';
     renderContact();

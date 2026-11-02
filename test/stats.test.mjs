@@ -61,3 +61,66 @@ test('upcomingJobs sorted by pickup time', () => {
   ], now);
   assert.deepEqual(u.map((q) => q.id), ['a', 'b']);
 });
+
+import { findConflicts, busyMinutes } from '../js/stats.js';
+
+test('busyMinutes accounts for round trip and waiting', () => {
+  assert.equal(busyMinutes({ duration_min: 40, options: { roundTrip: true, waitHours: 1 } }), 140);
+  assert.equal(busyMinutes({}), 60);
+});
+
+test('findConflicts: overlap with 30-min buffer, ignores other statuses and self', () => {
+  const quotes = [
+    { id: 'a', status: 'confirmed', pickup_at: '2026-12-01T02:00:00Z', duration_min: 60, options: {} },  // 09:00–10:00 ไทย
+    { id: 'b', status: 'sent', pickup_at: '2026-12-01T04:20:00Z', duration_min: 30, options: {} },       // 11:20–11:50
+    { id: 'c', status: 'cancelled', pickup_at: '2026-12-01T03:00:00Z', duration_min: 60, options: {} },
+    { id: 'd', status: 'confirmed', pickup_at: '2026-12-01T08:00:00Z', duration_min: 60, options: {} },  // ไกล
+  ];
+  // ทริปใหม่ 10:15–11:00 ไทย → ชน a (เผื่อ 30 นาที) และ b (11:00+30 = 11:30 > 11:20)
+  const r = findConflicts(quotes, { start: new Date('2026-12-01T03:15:00Z'), busyMin: 45 });
+  assert.deepEqual(r.map((x) => x.q.id), ['a', 'b']);
+  // ไม่เผื่อเวลา → ไม่ชน
+  assert.equal(findConflicts(quotes, { start: new Date('2026-12-01T03:15:00Z'), busyMin: 45 }, { bufferMin: 0 }).length, 0);
+  // แก้ไขงาน a เอง → ไม่นับตัวเอง
+  assert.deepEqual(findConflicts(quotes, { start: new Date('2026-12-01T02:00:00Z'), busyMin: 60 }, { excludeId: 'a' }).map((x) => x.q.id), []);
+  assert.deepEqual(findConflicts(quotes, { start: new Date('invalid'), busyMin: 60 }), []);
+});
+
+import { monthGrid, jobsOnDay, jobsByDay, monthStats, monthTrend, dayKey } from '../js/stats.js';
+
+test('monthGrid: Nov 2026 starts on Sunday, weeks of 7, trims empty trailing week', () => {
+  const g = monthGrid(2026, 10);
+  assert.equal(g[0][0].date.getDate(), 1);           // 1 พ.ย. 2569 เป็นวันอาทิตย์
+  assert.ok(g.every((w) => w.length === 7));
+  assert.equal(g.length, 5);                          // 1–30 พ.ย. ใช้ 5 สัปดาห์
+  const feb = monthGrid(2026, 1);                     // ก.พ. 2026 เริ่มวันอาทิตย์ 28 วัน = 4 สัปดาห์พอดี
+  assert.equal(feb.length, 4);
+});
+
+test('jobsOnDay / jobsByDay ignore drafts and cancelled', () => {
+  const qs = [
+    { id: 1, status: 'confirmed', pickup_at: new Date(2026, 10, 5, 9).toISOString() },
+    { id: 2, status: 'sent', pickup_at: new Date(2026, 10, 5, 7).toISOString() },
+    { id: 3, status: 'cancelled', pickup_at: new Date(2026, 10, 5, 8).toISOString() },
+    { id: 4, status: 'draft', pickup_at: new Date(2026, 10, 6, 8).toISOString() },
+  ];
+  assert.deepEqual(jobsOnDay(qs, new Date(2026, 10, 5)).map((q) => q.id), [2, 1]);
+  const m = jobsByDay(qs, 2026, 10);
+  assert.equal(m.get(dayKey(new Date(2026, 10, 5))).length, 2);
+  assert.equal(m.has(dayKey(new Date(2026, 10, 6))), false);
+});
+
+test('monthStats counts confirmed+done in month incl. upcoming; monthTrend spans n months', () => {
+  const now = new Date(2026, 10, 15, 12);
+  const qs = [
+    { status: 'done', pickup_at: new Date(2026, 10, 3, 9).toISOString(), fare_quoted: 300, distance_km: 10, options: {} },
+    { status: 'confirmed', pickup_at: new Date(2026, 10, 20, 9).toISOString(), fare_quoted: 500, distance_km: 20, options: { roundTrip: true } },
+    { status: 'sent', pickup_at: new Date(2026, 10, 21, 9).toISOString(), fare_quoted: 999 },
+    { status: 'done', pickup_at: new Date(2026, 9, 3, 9).toISOString(), fare_quoted: 200, distance_km: 5, options: {} },
+  ];
+  const s = monthStats(qs, 2026, 10, now);
+  assert.deepEqual([s.jobs, s.done, s.upcoming, s.revenue, s.revenueDone, s.km], [2, 1, 1, 800, 300, 50]);
+  const t = monthTrend(qs, 2026, 10, 6, now);
+  assert.equal(t.length, 6);
+  assert.deepEqual(t.slice(-2).map((x) => x.jobs), [1, 2]);
+});
