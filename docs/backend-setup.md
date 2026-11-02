@@ -31,8 +31,11 @@
 
 3. **สร้างบัญชีคนขับ + ปิดการสมัครเอง** (สำคัญมาก)
    - **Authentication → Users → Add user → Create new user** ใส่อีเมลและรหัสผ่านของคุณ (ติ๊ก Auto Confirm)
-   - **Authentication → Sign In / Providers → Email** → ปิด **"Allow new users to sign up"**
-     ถ้าไม่ปิด คนอื่นจะสมัครแล้วเห็นข้อมูลลูกค้าได้
+   - **Authentication → Sign In / Providers** → หัวข้อ **User Signups** → ปิด **"Allow new users to sign up"** → Save
+     (ลิงก์ตรง: `https://supabase.com/dashboard/project/<project-ref>/auth/providers`)
+   - **ชั้นป้องกันที่ 2:** `schema.sql` ล็อกสิทธิ์ไว้ที่อีเมลในตาราง `public.drivers` (ตั้งไว้เป็น wiriya.ii1998@gmail.com)
+     ต่อให้มีคนสมัครบัญชีได้ ก็จะไม่เห็นข้อมูลลูกค้าเลย
+     - เพิ่มคนขับ: SQL Editor → `insert into public.drivers (email) values ('อีเมล');`
 
 4. **เอา key มาใส่ในแอป**
    - **Project Settings → API**
@@ -46,7 +49,7 @@
 
 | ใคร | customers | quotes | settings |
 |---|---|---|---|
-| คนขับ (ล็อกอินแล้ว) | อ่าน/เขียนทั้งหมด | อ่าน/เขียนทั้งหมด | อ่าน/เขียนทั้งหมด |
+| คนขับ (ล็อกอินแล้ว + อีเมลอยู่ใน `drivers`) | อ่าน/เขียนทั้งหมด | อ่าน/เขียนทั้งหมด | อ่าน/เขียนทั้งหมด |
 | ลูกค้า / คนทั่วไป | ❌ | ส่งคำขอได้ผ่าน `submit_booking_request()` เท่านั้น อ่านไม่ได้ | อ่านได้แค่ `fare_config` |
 
 - `anon key` อยู่ในหน้าเว็บได้ เพราะสิทธิ์ถูกจำกัดด้วย RLS ด้านบน

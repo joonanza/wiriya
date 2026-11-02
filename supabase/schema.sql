@@ -85,10 +85,29 @@ create trigger settings_touch before update on public.settings
   for each row execute function public.touch_updated_at();
 
 -- =====================================================================
+-- รายชื่อคนขับที่มีสิทธิ์ (ล็อกด้วยอีเมล)
+--   ต่อให้มีคนสมัครบัญชีเองได้ ก็จะไม่เห็น/แก้ข้อมูลใด ๆ ถ้าอีเมลไม่อยู่ในตารางนี้
+--   เพิ่มคนขับ: insert into public.drivers (email) values ('อีเมล');
+-- =====================================================================
+create table if not exists public.drivers (
+  email       text primary key check (email = lower(email)),
+  created_at  timestamptz not null default now()
+);
+alter table public.drivers enable row level security;   -- ไม่มี policy = เว็บอ่าน/แก้ตารางนี้ไม่ได้
+insert into public.drivers (email) values ('wiriya.ii1998@gmail.com') on conflict do nothing;
+
+create or replace function public.is_driver() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.drivers where email = lower(coalesce(auth.jwt() ->> 'email', '')));
+$$;
+revoke all on function public.is_driver() from public;
+grant execute on function public.is_driver() to authenticated;
+
+-- =====================================================================
 -- Row Level Security
---   คนขับ = ผู้ใช้ที่ล็อกอินแล้ว (authenticated) → อ่าน/เขียนได้ทั้งหมด
+--   คนขับ = ผู้ใช้ที่ล็อกอินแล้ว และอีเมลอยู่ใน public.drivers → อ่าน/เขียนได้ทั้งหมด
 --   ลูกค้า (anon) → อ่านได้แค่เรทราคา และส่งคำขอจองผ่านฟังก์ชันด้านล่างเท่านั้น
---   ⚠️ ต้องปิด "Allow new users to sign up" ใน Authentication → Providers → Email
+--   แนะนำให้ปิด "Allow new users to sign up" ด้วย (Authentication → Sign In / Providers)
 -- =====================================================================
 alter table public.customers enable row level security;
 alter table public.quotes    enable row level security;
@@ -97,19 +116,19 @@ alter table public.expenses  enable row level security;
 
 drop policy if exists driver_all_expenses on public.expenses;
 create policy driver_all_expenses on public.expenses
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (public.is_driver()) with check (public.is_driver());
 
 drop policy if exists driver_all_customers on public.customers;
 create policy driver_all_customers on public.customers
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (public.is_driver()) with check (public.is_driver());
 
 drop policy if exists driver_all_quotes on public.quotes;
 create policy driver_all_quotes on public.quotes
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (public.is_driver()) with check (public.is_driver());
 
 drop policy if exists driver_all_settings on public.settings;
 create policy driver_all_settings on public.settings
-  for all to authenticated using (true) with check (true);
+  for all to authenticated using (public.is_driver()) with check (public.is_driver());
 
 drop policy if exists public_read_fare on public.settings;
 create policy public_read_fare on public.settings

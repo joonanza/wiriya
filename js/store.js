@@ -67,6 +67,7 @@ function createLocalStore() {
   return {
     mode: 'local',
     async getSession() { return { local: true }; },
+    async isDriver() { return true; },
     async signIn() { return { local: true }; },
     async signOut() {},
 
@@ -181,6 +182,11 @@ async function createSupabaseStore() {
     mode: 'supabase',
     client: sb,
     async getSession() { const { data } = await sb.auth.getSession(); return data.session; },
+    /** บัญชีนี้อยู่ในรายชื่อคนขับไหม (ถ้ายังไม่ได้รัน schema ใหม่ → ไม่บล็อก) */
+    async isDriver() {
+      const { data, error } = await sb.rpc('is_driver');
+      return error ? null : data === true;
+    },
     async signIn(email, password) {
       return must(await sb.auth.signInWithPassword({ email, password }));
     },
@@ -276,6 +282,10 @@ async function createSupabaseStore() {
       await check('ตาราง settings (อ่านเรทราคา)', async () => { const r = await sb.from('settings').select('key').limit(1); if (r.error) throw r.error; return 'พร้อม'; });
       const { data: s } = await sb.auth.getSession();
       out.push({ ok: !!s.session, label: 'ล็อกอินคนขับ', detail: s.session ? s.session.user.email : 'ยังไม่ได้ล็อกอิน' });
+      if (s.session) {
+        const d = await this.isDriver();
+        out.push({ ok: d === true, label: 'สิทธิ์คนขับ (ตาราง drivers)', detail: d === true ? 'มีสิทธิ์' : d === false ? 'อีเมลนี้ไม่อยู่ในตาราง drivers' : 'ยังไม่มีฟังก์ชัน is_driver → รัน schema.sql ใหม่' });
+      }
       for (const t of ['customers', 'quotes', 'expenses']) {
         await check(`ตาราง ${t}`, async () => {
           const r = await sb.from(t).select('id', { count: 'exact', head: true });

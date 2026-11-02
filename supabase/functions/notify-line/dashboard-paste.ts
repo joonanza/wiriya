@@ -35,6 +35,10 @@ const handle = createHandler({
   async releaseClaim(id) {
     await admin.from('quotes').update({ line_notified_at: null }).eq('id', id);
   },
+  async isDriverEmail(email) {
+    const { data } = await admin.from('drivers').select('email').eq('email', email).maybeSingle();
+    return !!data;
+  },
   async getUser(jwt) {
     const { data, error } = await admin.auth.getUser(jwt);
     return error ? null : data.user;
@@ -166,6 +170,7 @@ function buildTestMessage(appUrl) {
 //   claimRequest(id, sinceIso)     → quote | null   (ทำเครื่องหมาย line_notified_at แบบ atomic)
 //   releaseClaim(id)               → void           (ส่งไม่สำเร็จ → ปลดเครื่องหมายให้ลองใหม่ได้)
 //   getUser(jwt)                   → user | null
+//   isDriverEmail(email)           → boolean        (อยู่ในตาราง drivers)
 //   fetch                          → fetch API
 //   now()                          → Date
 // }
@@ -214,6 +219,9 @@ function createHandler(deps) {
       const jwt = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
       const user = jwt ? await deps.getUser(jwt).catch(() => null) : null;
       if (!user) return json(401, { error: 'ต้องล็อกอินเป็นคนขับก่อน' });
+      if (deps.isDriverEmail && !(await deps.isDriverEmail(String(user.email || '').toLowerCase()).catch(() => false))) {
+        return json(403, { error: 'บัญชีนี้ไม่อยู่ในรายชื่อคนขับ' });
+      }
       const r = await pushToDriver(buildTestMessage(appUrl));
       return r.ok ? json(200, { ok: true, sent: true }) : json(r.status, { error: r.error });
     }

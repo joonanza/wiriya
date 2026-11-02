@@ -33,6 +33,10 @@ const handle = createHandler({
   async releaseClaim(id) {
     await admin.from('quotes').update({ line_notified_at: null }).eq('id', id);
   },
+  async isDriverEmail(email) {
+    const { data } = await admin.from('drivers').select('email').eq('email', email).maybeSingle();
+    return !!data;
+  },
   async getUser(jwt) {
     const { data, error } = await admin.auth.getUser(jwt);
     return error ? null : data.user;

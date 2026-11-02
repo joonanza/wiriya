@@ -19,7 +19,7 @@ const QUOTE = {
   note: 'กระเป๋า 2 ใบ',
 };
 
-function setup({ env = {}, quote = QUOTE, lineStatus = 200, user = { id: 'u1' } } = {}) {
+function setup({ env = {}, quote = QUOTE, lineStatus = 200, user = { id: 'u1', email: 'Driver@x.com' } } = {}) {
   const calls = { fetch: [], claim: [], release: [] };
   const vars = { LINE_CHANNEL_ACCESS_TOKEN: 'tok', LINE_DRIVER_USER_ID: 'Uabc', APP_URL: 'https://joonanza.github.io/wiriya/', ...env };
   const handle = createHandler({
@@ -27,7 +27,8 @@ function setup({ env = {}, quote = QUOTE, lineStatus = 200, user = { id: 'u1' } 
     now: () => new Date('2026-11-02T10:00:00Z'),
     async claimRequest(id, since) { calls.claim.push({ id, since }); return quote; },
     async releaseClaim(id) { calls.release.push(id); },
-    async getUser(jwt) { return jwt === 'good' ? user : null; },
+    async getUser(jwt) { return jwt === 'good' ? user : jwt === 'other' ? { id: 'u2', email: 'stranger@x.com' } : null; },
+    async isDriverEmail(email) { return email === 'driver@x.com'; },
     async fetch(url, init) {
       calls.fetch.push({ url, init, body: JSON.parse(init.body) });
       return new Response(lineStatus === 200 ? '{}' : '{"message":"bad"}', { status: lineStatus });
@@ -98,6 +99,7 @@ test('test message requires a logged-in driver', async () => {
   const { handle, calls } = setup();
   assert.equal((await handle(post({ test: true }))).status, 401);
   assert.equal((await handle(post({ test: true }, { authorization: 'Bearer bad' }))).status, 401);
+  assert.equal((await handle(post({ test: true }, { authorization: 'Bearer other' }))).status, 403);
   const ok = await handle(post({ test: true }, { authorization: 'Bearer good' }));
   assert.equal(ok.status, 200);
   assert.equal(calls.fetch.length, 1);

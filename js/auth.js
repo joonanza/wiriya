@@ -14,6 +14,16 @@ export async function requireDriver() {
 
   const session = await store.getSession();
   addLogout(store);
+  if (session && (await store.isDriver()) === false) {
+    document.querySelector('main').innerHTML = `
+      <div class="card login-card">
+        <h2>บัญชีนี้ไม่มีสิทธิ์</h2>
+        <p class="muted">${esc(session.user?.email || '')} ไม่อยู่ในรายชื่อคนขับ</p>
+        <button type="button" class="primary" id="switchAcc">ออกจากระบบ / เปลี่ยนบัญชี</button>
+      </div>`;
+    $('switchAcc').onclick = async () => { await store.signOut(); location.reload(); };
+    return new Promise(() => {});
+  }
   if (session) { startRequestNotifier(store); return store; }
 
   const main = document.querySelector('main');
