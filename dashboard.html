@@ -47,6 +47,27 @@
       </div>
     </div>
 
+    <div class="card" id="maintCard">
+      <h2>🔧 บำรุงรักษาตามเลขไมล์</h2>
+      <div id="odoInfo" class="muted"></div>
+      <div id="maintList" class="list compact"></div>
+    </div>
+
+    <div class="card" id="calibCard">
+      <h2>🧪 ต้นทุนจริง vs โมเดล</h2>
+      <p class="muted small">คิดจากบันทึกค่าใช้จ่ายที่มีเลขไมล์ (และ kWh ถ้าบันทึก) เพื่อให้ราคาที่เสนอตรงกับต้นทุนจริงของรถคุณ</p>
+      <div id="calib"></div>
+    </div>
+
+    <div class="card" id="taxCard">
+      <div class="card-head"><h2>🧾 สรุปภาษีประจำปี (ประมาณการ)</h2><select id="taxYear" aria-label="ปีภาษี" style="width:auto"></select></div>
+      <div class="row">
+        <div class="field"><label for="taxOther">เงินได้สุทธิอื่น เช่น เงินเดือน (หลังหักค่าใช้จ่าย)</label><input id="taxOther" type="number" min="0" step="1000" value="0" inputmode="numeric"></div>
+        <div class="field"><label for="taxAllow">ค่าลดหย่อนรวม</label><input id="taxAllow" type="number" min="0" step="1000" value="60000" inputmode="numeric"></div>
+      </div>
+      <div id="tax"></div>
+    </div>
+
     <div class="card">
       <h2>บันทึกค่าใช้จ่าย</h2>
       <form id="expForm" class="exp-form">
@@ -57,6 +78,10 @@
         <div class="row">
           <div class="field"><label for="eAmount">จำนวนเงิน (฿)</label><input id="eAmount" type="number" min="0" step="1" inputmode="decimal" required></div>
           <div class="field"><label for="eOdo">เลขไมล์ (km, ถ้ามี)</label><input id="eOdo" type="number" min="0" step="1" inputmode="numeric"></div>
+        </div>
+        <div class="row" id="eExtra">
+          <div class="field" id="eKwhField" hidden><label for="eKwh">จำนวนไฟที่ชาร์จ (kWh)</label><input id="eKwh" type="number" min="0" step="0.1" inputmode="decimal" placeholder="ดูจากแอป/ใบเสร็จตู้ชาร์จ"></div>
+          <div class="field" id="eItemField" hidden><label for="eItem">รายการที่ทำ (ใช้เตือนรอบถัดไป)</label><select id="eItem"></select></div>
         </div>
         <div class="field"><label for="eNote">รายละเอียด</label><input id="eNote" placeholder="เช่น ชาร์จ PEA Volta 35 kWh / เปลี่ยนยาง 4 เส้น"></div>
         <div class="actions"><button type="submit" class="primary">+ บันทึก</button></div>

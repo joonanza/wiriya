@@ -19,6 +19,21 @@
       <div class="card" id="routeCard">
         <h2>เส้นทาง</h2>
         <div class="field">
+          <label for="tripMode">รูปแบบ</label>
+          <select id="tripMode">
+            <option value="trip">ตามระยะทาง (เที่ยวเดียว / ไป-กลับ)</option>
+            <option value="full">เหมาเต็มวัน</option>
+            <option value="half">เหมาครึ่งวัน</option>
+          </select>
+        </div>
+        <div id="charterBox" class="charter-box" hidden>
+          <div class="row">
+            <div class="field"><label for="charterDays">จำนวนวัน</label><input id="charterDays" type="number" min="1" max="30" step="1" value="1" inputmode="numeric"></div>
+            <div class="field"><label for="charterKm">ระยะทางรวมโดยประมาณ (km)</label><input id="charterKm" type="number" min="0" step="10" placeholder="ไม่ทราบก็เว้นว่าง" inputmode="numeric"></div>
+          </div>
+          <p class="muted small" id="dropoffHint">งานเหมา: ใส่จุดรับก็พอ จุดส่ง/จุดหมายหลักไม่บังคับ</p>
+        </div>
+        <div class="field">
           <label for="pickup"><span class="dot a"></span>จุดรับ</label>
           <div class="place-input">
             <input id="pickup" autocomplete="off" enterkeyhint="search" placeholder="ชื่อสถานที่ / ถนน / วางลิงก์ Google Maps">

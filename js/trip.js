@@ -2,6 +2,7 @@
 // ต้องมี element: pickup, dropoff, pickupSuggest, dropoffSuggest, gpsBtn, swapBtn, vehicle, datetime,
 //                toll, wait, roundTrip, airport, map, quote
 import { calculateFare } from './pricing.js';
+import { calculateCharter } from './planning.js';
 import { searchPlaces, reverseGeocode, getRoute, isShortMapsLink, searchCategory, PLACE_CATEGORIES, haversineKm } from './geo.js';
 import { $, esc, baht, bahtExact, toast, toLocalInput, shortPlace } from './ui.js';
 
@@ -270,30 +271,94 @@ export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true, 
     renderQuote();
   }
 
+  // ---------- โหมดงาน: ตามระยะทาง / เหมาวัน ----------
+  const modeEl = $('tripMode');
+  const val = (id) => ($(id) ? $(id).value : '');
+  function readCharter() {
+    const mode = modeEl?.value || 'trip';
+    if (mode !== 'full' && mode !== 'half') return null;
+    const plan = (cfg.charter || {})[mode] || {};
+    return {
+      type: mode,
+      days: Math.max(1, Math.round(Number(val('charterDays')) || 1)),
+      estKm: Number(val('charterKm')) || 0,
+      overtimeHours: Number(val('charterOt')) || 0,
+      overnight: !!$('charterOvernight')?.checked,
+      hours: plan.hours || 10,
+    };
+  }
+  function syncModeUi() {
+    const charter = !!readCharter();
+    if ($('charterBox')) $('charterBox').hidden = !charter;
+    for (const id of ['roundTrip', 'wait']) {
+      const el = $(id)?.closest('.field, .check');
+      if (el) el.hidden = charter;
+    }
+    if ($('dropoffHint')) $('dropoffHint').hidden = !charter;
+  }
+
   function readOptions() {
+    const charter = readCharter();
     return {
       vehicleId: $('vehicle').value,
-      roundTrip: $('roundTrip').checked,
+      roundTrip: charter ? false : $('roundTrip').checked,
       airport: $('airport').checked,
-      waitHours: Number($('wait').value) || 0,
+      waitHours: charter ? 0 : Number($('wait').value) || 0,
       tollBaht: Number($('toll').value) || 0,
+      ...(charter ? { charter } : {}),
     };
   }
 
   function readTrip() {
     const r = state.route;
+    const opts = readOptions();
+    if (opts.charter) {
+      // เหมาวัน: ระยะทางรวมที่ใส่เอง ถ้าไม่ใส่ใช้ระยะเส้นทาง × 2 (ไป-กลับ)
+      const km = opts.charter.estKm || (r ? r.distanceKm * 2 : 0);
+      return { ...opts, distanceKm: km, durationMin: opts.charter.hours * 60 * opts.charter.days, datetime: new Date($('datetime').value) };
+    }
     return {
-      ...readOptions(),
+      ...opts,
       distanceKm: r.distanceKm,
       durationMin: r.durationMin * (r.estimated ? 1 : cfg.trafficFactor || 1),
       datetime: new Date($('datetime').value),
     };
   }
 
+  function renderCharterQuote(box) {
+    if (!state.pickup) {
+      box.innerHTML = '<p class="empty">เลือกจุดรับ (จุดส่งไม่บังคับสำหรับงานเหมา)</p>';
+      state.fare = null; state.trip = null; notify(); return;
+    }
+    const trip = readTrip();
+    const ch = trip.charter;
+    const f = calculateCharter(cfg.charter, { ...ch, estKm: trip.distanceKm, tollBaht: trip.tollBaht });
+    f.vehicle = cfg.vehicles.find((v) => v.id === trip.vehicleId) || cfg.vehicles[0];
+    f.timeMultiplier = { multiplier: 1, label: null };
+    f.charter = ch;
+    state.fare = f; state.trip = trip;
+    const label = `เหมา${f.plan.label} ${f.days} วัน`;
+    if (!showPrice) {
+      box.innerHTML = `<div class="stats num trip-summary"><span>🚐 <b>${esc(label)}</b></span>
+        ${trip.distanceKm ? `<span>📏 ประมาณ <b>${Math.round(trip.distanceKm)} km</b></span>` : ''}</div>`;
+      notify(); return;
+    }
+    const rows = f.lines.map((l) => `<tr><td>${esc(l.label)}${l.note ? `<span class="note">${esc(l.note)}</span>` : ''}</td>
+      <td class="num">${bahtExact(Math.round(l.amount * 100) / 100)}</td></tr>`).join('');
+    box.innerHTML = `
+      <div class="total"><span>ราคา${esc(label)}</span><span class="amount num">${baht(f.total)}</span></div>
+      <div class="stats num"><span>ระยะทางรวม ~${Math.round(f.km)} km (รวมให้ ${f.includedKm} km)</span><span>${f.plan.hours} ชม./วัน</span></div>
+      ${!ch.estKm ? '<div class="notice">ยังไม่ได้ใส่ระยะทางรวม ระบบใช้ระยะจุดรับ↔จุดส่ง × 2 แทน (ถ้าไม่มีจุดส่ง = 0 km)</div>' : ''}
+      <details class="breakdown-wrap"><summary>รายละเอียดการคำนวณ</summary><table class="breakdown">${rows}</table></details>`;
+    notify();
+  }
+
   const notify = () => onUpdate(state);
 
   function renderQuote() {
     const box = $('quote');
+    syncModeUi();
+    if (readCharter()) { renderCharterQuote(box); return; }
     if (!state.route) {
       box.innerHTML = '<p class="empty">เลือกจุดรับและจุดส่งเพื่อดูราคา</p>';
       state.fare = null; state.trip = null; notify(); return;
@@ -328,7 +393,7 @@ export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true, 
     notify();
   }
 
-  for (const id of ['vehicle', 'datetime', 'roundTrip', 'airport', 'wait', 'toll']) {
+  for (const id of ['vehicle', 'datetime', 'roundTrip', 'airport', 'wait', 'toll', 'tripMode', 'charterDays', 'charterKm', 'charterOt', 'charterOvernight'].filter((x) => $(x))) {
     $(id).addEventListener('input', renderQuote);
     $(id).addEventListener('change', renderQuote);
   }
@@ -341,6 +406,14 @@ export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true, 
     $('airport').checked = !!options.airport;
     $('wait').value = options.waitHours || 0;
     $('toll').value = options.tollBaht || 0;
+    const ch = options.charter;
+    if (modeEl) modeEl.value = ch ? ch.type : 'trip';
+    if (ch) {
+      if ($('charterDays')) $('charterDays').value = ch.days || 1;
+      if ($('charterKm')) $('charterKm').value = ch.estKm || '';
+      if ($('charterOt')) $('charterOt').value = ch.overtimeHours || 0;
+      if ($('charterOvernight')) $('charterOvernight').checked = !!ch.overnight;
+    }
     if (pickup) await setPlace('pickup', pickup, pickup.name, { route: false });
     if (dropoff) await setPlace('dropoff', dropoff, dropoff.name, { route: false });
     await updateRoute();

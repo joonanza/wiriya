@@ -3,6 +3,8 @@ import { requireDriver } from './auth.js';
 import { createTripPlanner } from './trip.js';
 import { collectRecentPlaces } from './geo.js';
 import { findConflicts } from './stats.js';
+import { batteryPlan } from './planning.js';
+import { searchCategory } from './geo.js';
 import { computeCostPerKm } from './cost.js';
 import {
   $, esc, baht, toast, copySync, normalizePhone, phoneDisplay, fmtDateTime, shortPlace,
@@ -152,7 +154,74 @@ function refreshOffer(st) {
   renderProfit();
   refreshMessage();
   renderConflicts();
+  renderBattery();
 }
+
+// ================= 🔋 วางแผนแบต EV + หาที่ชาร์จ =================
+const isEV = costInputs.energyType === 'ev';
+const SOC_KEY = 'wiriya.socNow.v1';
+try { const v = localStorage.getItem(SOC_KEY); if (v) $('socNow').value = v; } catch { /* ignore */ }
+
+function renderBattery() {
+  const st = planner.state;
+  $('batteryCard').hidden = !isEV || !st.fare;
+  if ($('batteryCard').hidden) return;
+  const t = st.trip;
+  const legKm = st.route ? st.route.distanceKm : 0;
+  // ระยะที่มีผู้โดยสาร: เหมา = ระยะรวม, ไป-กลับ = ×2, เที่ยวเดียว = 1 ขา (+ ขากลับรถเปล่าถ้าติ๊ก)
+  const tripKm = t.charter ? t.distanceKm : legKm * (t.roundTrip ? 2 : 1);
+  const returnKm = !t.charter && !t.roundTrip && $('incReturn').checked ? legKm : 0;
+  const plan = batteryPlan({
+    socPct: Number($('socNow').value),
+    batteryKwh: costInputs.batteryKwh ?? 50.6,
+    kwhPer100km: (costInputs.kwhPer100km || 16) * 0.9, // ค่าที่ปลั๊ก → ที่แบต (ประสิทธิภาพชาร์จ ~90%)
+    tripKm: tripKm + (Number($('toPickupKm').value) || 0),
+    returnKm,
+    reservePct: costInputs.reservePct ?? 15,
+    dcKw: costInputs.dcKw ?? 60,
+  });
+  const dcCost = plan.chargeNeededKwh / 0.9 * (costInputs.dcRate || 7.5);
+  $('incReturn').closest('.field').hidden = !!t.charter || !!t.roundTrip;
+  $('findChargersMid').hidden = !(st.route && st.route.coords?.length > 2 && legKm > 60);
+  $('batteryResult').innerHTML = `
+    <div class="${plan.ok ? 'success' : 'notice'}">
+      ${plan.ok ? '✅ แบตพอ' : '⚠️ แบตไม่พอ ต้องชาร์จระหว่างทาง'}
+      · ใช้ไฟ ~${plan.usedKwh.toFixed(1)} kWh · ${plan.ok ? 'เหลือ' : 'จะเหลือ'} ~${Math.max(0, plan.endPct).toFixed(0)}%
+      ${!plan.ok ? `<br>ควรชาร์จเพิ่ม ~${plan.chargeNeededKwh.toFixed(0)} kWh (DC ~${plan.chargeMinutes} นาที · ~${Math.round(dcCost)} ฿) เพื่อเหลือสำรอง ${costInputs.reservePct ?? 15}%` : ''}
+    </div>
+    <p class="muted small">วิ่งได้อีก ~${Math.round(plan.rangeKm)} km ก่อนถึงแบตสำรอง · คำนวณจาก ${((costInputs.kwhPer100km || 16) * 0.9).toFixed(1)} kWh/100 km ที่แบต (ทางหลวงความเร็วสูง/เปิดแอร์หนักจะใช้มากกว่านี้)</p>`;
+}
+for (const id of ['socNow', 'toPickupKm', 'incReturn']) {
+  $(id).addEventListener('input', () => {
+    try { localStorage.setItem(SOC_KEY, $('socNow').value); } catch { /* ignore */ }
+    renderBattery();
+  });
+}
+
+async function showChargers(near, label) {
+  const box = $('chargerList');
+  box.innerHTML = '<p class="empty">กำลังค้นหาที่ชาร์จ…</p>';
+  try {
+    const list = (await searchCategory('charging', { near, limit: 8 })).slice(0, 6);
+    box.innerHTML = list.length
+      ? `<p class="muted small">⚡ ที่ชาร์จใกล้${esc(label)} (ข้อมูลจาก OpenStreetMap อาจไม่ครบ ควรเช็กในแอปผู้ให้บริการชาร์จด้วย)</p>`
+        + list.map((c) => `<a class="day-job" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}">
+          <span class="day-time num">${c.distanceKm < 1 ? Math.round(c.distanceKm * 1000) + ' m' : c.distanceKm.toFixed(1) + ' km'}</span>
+          <span class="day-txt"><b>${esc(c.title)}</b><span class="muted">${esc(c.subtitle || '')}</span></span><span class="muted">นำทาง ↗</span></a>`).join('')
+      : `<p class="empty">ไม่พบที่ชาร์จใกล้${esc(label)}ในข้อมูลแผนที่</p>`;
+  } catch (e) { box.innerHTML = `<p class="empty">ค้นหาไม่สำเร็จ: ${esc(e.message)}</p>`; }
+}
+$('findChargers').addEventListener('click', () => {
+  const st = planner.state;
+  const target = st.dropoff || st.pickup;
+  if (target) showChargers(target, st.dropoff ? 'ปลายทาง' : 'จุดรับ');
+});
+$('findChargersMid').addEventListener('click', () => {
+  const c = planner.state.route?.coords;
+  if (!c?.length) return;
+  const [lat, lng] = c[Math.floor(c.length / 2)];
+  showChargers({ lat, lng }, 'กลางทาง');
+});
 
 function renderProfit() {
   const st = planner.state;
@@ -193,9 +262,12 @@ function quoteText() {
     '',
     `📅 ${dt}`,
     `🟢 รับ: ${shortPlace(st.pickup.name)}`,
-    `🔴 ส่ง: ${shortPlace(st.dropoff.name)}`,
-    `🗺️ เส้นทาง: ${mapsDirLink(st.pickup, st.dropoff)}`,
-    `🚗 ${f.vehicle.name} · ${f.km.toFixed(1)} km (~${Math.round(f.min)} นาที)`,
+    st.dropoff && `🔴 ${t.charter ? 'จุดหมายหลัก' : 'ส่ง'}: ${shortPlace(st.dropoff.name)}`,
+    st.dropoff && `🗺️ เส้นทาง: ${mapsDirLink(st.pickup, st.dropoff)}`,
+    t.charter
+      ? `🚐 เหมา${f.plan.label} ${f.days} วัน · ${f.plan.hours} ชม./วัน · รวมระยะ ${f.includedKm} km${f.km > f.includedKm ? ` (ประมาณ ${Math.round(f.km)} km)` : ''}`
+      : `🚗 ${f.vehicle.name} · ${f.km.toFixed(1)} km (~${Math.round(f.min)} นาที)`,
+    t.charter && '⚡ รวมค่าไฟ/ค่าชาร์จแล้ว',
     extras && `➕ ${extras}`,
     f.chargeStops && `🔌 แวะชาร์จระหว่างทาง ${f.chargeStops} ครั้ง (~${f.chargeMinutes} นาที)`,
     '',
@@ -261,7 +333,7 @@ async function save({ status, channel }) {
       pickup: st.pickup,
       dropoff: st.dropoff,
       pickup_at: dt instanceof Date && !Number.isNaN(dt.getTime()) ? dt.toISOString() : null,
-      distance_km: Math.round(st.route.distanceKm * 100) / 100,
+      distance_km: Math.round((st.trip.charter ? st.trip.distanceKm : st.route.distanceKm) * 100) / 100,
       duration_min: Math.round(st.trip.durationMin * 10) / 10,
       options: planner.readOptions(),
       fare_calc: st.fare.total,

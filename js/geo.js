@@ -296,6 +296,7 @@ export const PLACE_CATEGORIES = [
   { id: 'train', icon: '🚆', label: 'สถานีรถไฟ', q: 'สถานีรถไฟ', tag: 'railway:station' },
   { id: 'hotel', icon: '🏨', label: 'โรงแรม', q: 'โรงแรม', tag: 'tourism:hotel' },
   { id: 'university', icon: '🎓', label: 'มหาวิทยาลัย', q: 'มหาวิทยาลัย', tag: 'amenity:university' },
+  { id: 'charging', icon: '⚡', label: 'ที่ชาร์จ EV', q: 'charging station', tag: 'amenity:charging_station' },
 ];
 
 /** สถานที่ตามหมวด เรียงจากใกล้ไปไกล (Photon กรองด้วย osm_tag + ให้น้ำหนักตำแหน่ง) */

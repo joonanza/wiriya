@@ -79,6 +79,11 @@
               <div class="field"><label>ค่าชาร์จ DC สาธารณะ (฿/kWh)</label><input type="number" step="0.1" data-c="dcRate"></div>
             </div>
             <p class="muted" id="blendNote"></p>
+            <div class="row3">
+              <div class="field"><label>ความจุแบต (kWh)</label><input type="number" step="0.1" data-c="batteryKwh"></div>
+              <div class="field"><label>แบตสำรองขั้นต่ำ (%)</label><input type="number" step="1" data-c="reservePct"></div>
+              <div class="field"><label>กำลังชาร์จ DC เฉลี่ย (kW)</label><input type="number" step="5" data-c="dcKw"></div>
+            </div>
           </div>
           <div class="row" data-energy="fuel">
             <div class="field"><label>ราคาน้ำมัน (฿/L)</label><input type="number" step="0.01" data-c="fuelPrice"></div>
@@ -209,6 +214,21 @@
           <div class="actions"><button type="button" id="addVehicle">+ เพิ่มรถ</button></div>
         </div>
       </div>
+      <h3>🚐 เหมาวัน (รวมค่าไฟแล้ว)</h3>
+      <table class="grid charter-grid">
+        <thead><tr><th></th><th>ราคา/วัน (฿)</th><th>ชั่วโมง/วัน</th><th>รวมระยะ (km/วัน)</th></tr></thead>
+        <tbody>
+          <tr><td>เต็มวัน</td><td><input type="number" step="100" data-f="charter.full.price"></td><td><input type="number" step="1" data-f="charter.full.hours"></td><td><input type="number" step="10" data-f="charter.full.includedKm"></td></tr>
+          <tr><td>ครึ่งวัน</td><td><input type="number" step="100" data-f="charter.half.price"></td><td><input type="number" step="1" data-f="charter.half.hours"></td><td><input type="number" step="10" data-f="charter.half.includedKm"></td></tr>
+        </tbody>
+      </table>
+      <div class="row3">
+        <div class="field"><label>ระยะเกิน (฿/km)</label><input type="number" step="0.5" data-f="charter.extraKmRate"></div>
+        <div class="field"><label>เกินเวลา (฿/ชม.)</label><input type="number" step="10" data-f="charter.overtimePerHour"></div>
+        <div class="field"><label>ค่าที่พักคนขับ (฿/คืน)</label><input type="number" step="50" data-f="charter.overnightPerNight"></div>
+      </div>
+      <p class="muted small" id="charterHint"></p>
+
       <h3>📍 ศูนย์กลางพื้นที่ให้บริการ</h3>
       <p class="muted">แผนที่จะเริ่มที่จุดนี้ และผลค้นหาสถานที่จะเรียงตามความใกล้จุดนี้ (ก่อนลูกค้าปักจุดรับ)</p>
       <div class="row">

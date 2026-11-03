@@ -1,6 +1,8 @@
 // ===== แดชบอร์ด: ระยะทางสะสม รายได้ ต้นทุน ค่าบำรุง กำไร + บันทึกค่าใช้จ่าย =====
 import { requireDriver } from './auth.js';
-import { summarize, monthlySeries, periodRange, EXPENSE_CATEGORIES } from './stats.js';
+import { summarize, monthlySeries, periodRange, EXPENSE_CATEGORIES, isCompleted, tripDate } from './stats.js';
+import { taxComparison, calibrateFromExpenses, estimateOdometer, maintenanceDue } from './planning.js';
+import { computeCostPerKm } from './cost.js';
 import { $, esc, baht, toast } from './ui.js';
 
 const store = await requireDriver();
@@ -26,6 +28,9 @@ function renderPeriods() {
 }
 
 function render() {
+  renderMaintenance?.();
+  renderCalibration?.();
+  renderTax?.();
   renderPeriods();
   const s = summarize(quotes, expenses, costInputs, periodRange(period));
   const all = summarize(quotes, expenses, costInputs, periodRange('all'));
@@ -49,7 +54,7 @@ function render() {
     ['<b>ต้นทุนรวม</b>', e.total],
     ['<b>กำไรโดยประมาณ</b>', s.estProfit],
   ].map(([l, v]) => `<tr><td>${l}</td><td class="${v < 0 ? 'neg' : ''}">${baht(v)}</td></tr>`).join('');
-  $('actTable').innerHTML = Object.entries(EXPENSE_CATEGORIES)
+  $('actTable').innerHTML = Object.entries(EXPENSE_CATEGORIES).filter(([k]) => k !== 'odometer')
     .map(([k, l]) => `<tr><td>${l}</td><td>${baht(s.actualByCat[k])}</td></tr>`).join('')
     + `<tr><td><b>รวมจ่ายจริง</b></td><td>${baht(s.actualTotal)}</td></tr>`
     + `<tr><td><b>เงินเหลือ (รายได้ − ทางด่วน − จ่ายจริง)</b></td><td class="${s.cashProfit < 0 ? 'neg' : ''}">${baht(s.cashProfit)}</td></tr>`;
@@ -140,6 +145,7 @@ $('expForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const amount = Number($('eAmount').value);
   if (!(amount >= 0)) { toast('ใส่จำนวนเงิน'); return; }
+  if ($('eCat').value === 'odometer' && !$('eOdo').value) { toast('ใส่เลขไมล์'); $('eOdo').focus(); return; }
   try {
     const saved = await store.saveExpense({
       date: $('eDate').value,
@@ -147,14 +153,114 @@ $('expForm').addEventListener('submit', async (e) => {
       amount,
       odometer_km: $('eOdo').value ? Number($('eOdo').value) : null,
       note: $('eNote').value.trim(),
+      kwh: $('eCat').value === 'charge' && $('eKwh').value ? Number($('eKwh').value) : null,
+      item: ['maintenance', 'tires'].includes($('eCat').value) && $('eItem').value ? $('eItem').value : null,
     });
     expenses.unshift(saved);
     expenses.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    $('eAmount').value = ''; $('eOdo').value = ''; $('eNote').value = '';
+    $('eAmount').value = ''; $('eOdo').value = ''; $('eNote').value = ''; $('eKwh').value = ''; $('eItem').value = '';
     toast('บันทึกค่าใช้จ่ายแล้ว');
     render();
   } catch (err) { toast(`บันทึกไม่สำเร็จ: ${err.message}`); }
 });
+
+// ---------- ฟอร์มค่าใช้จ่าย: ช่องเพิ่มตามประเภท ----------
+$('eItem').innerHTML = '<option value="">— ไม่ระบุ —</option>'
+  + (costInputs.maintenance || []).filter((m) => m.name).map((m) => `<option value="${esc(m.name)}">${esc(m.name)} (ทุก ${Number(m.intervalKm || 0).toLocaleString('th-TH')} km)</option>`).join('');
+function syncExpenseForm() {
+  const c = $('eCat').value;
+  $('eKwhField').hidden = c !== 'charge';
+  $('eItemField').hidden = !['maintenance', 'tires'].includes(c);
+  if (c === 'odometer') { $('eAmount').value = '0'; }
+}
+$('eCat').addEventListener('change', syncExpenseForm);
+syncExpenseForm();
+
+// ---------- 🔧 บำรุงรักษาตามเลขไมล์ ----------
+function renderMaintenance() {
+  const odo = estimateOdometer(expenses, quotes, costInputs.deadheadPct || 0);
+  if (!odo) {
+    $('odoInfo').innerHTML = 'ยังไม่มีเลขไมล์ → บันทึกค่าใช้จ่ายประเภท <b>"บันทึกเลขไมล์"</b> ด้านล่างครั้งแรก แล้วระบบจะประมาณเลขไมล์ต่อจากงานที่วิ่ง';
+    $('maintList').innerHTML = '';
+    return;
+  }
+  $('odoInfo').innerHTML = `เลขไมล์ประมาณ <b class="num">${odo.estimated.toLocaleString('th-TH')} km</b>
+    <span class="small">(บันทึกล่าสุด ${odo.reading.toLocaleString('th-TH')} km เมื่อ ${esc(new Date(`${odo.readingDate}T00:00:00`).toLocaleDateString('th-TH', { dateStyle: 'medium' }))} + วิ่งงานหลังจากนั้น ~${odo.addedKm.toLocaleString('th-TH')} km)</span>`;
+  const due = maintenanceDue(costInputs.maintenance, expenses, odo.estimated);
+  const icon = { overdue: '🔴', soon: '🟠', ok: '🟢' };
+  $('maintList').innerHTML = due.map((d) => `
+    <div class="day-job maint-${d.status}">
+      <span class="day-time">${icon[d.status]}</span>
+      <span class="day-txt"><b>${esc(d.name)}</b>
+        <span class="muted">${d.status === 'overdue' ? `เลยกำหนด ${Math.abs(d.remaining).toLocaleString('th-TH')} km` : `อีก ${d.remaining.toLocaleString('th-TH')} km`}
+          (ที่ ${d.dueAt.toLocaleString('th-TH')} km)${d.noHistory ? ' · ยังไม่มีประวัติ นับรอบจากเลขไมล์' : ` · ทำล่าสุด ${d.lastKm.toLocaleString('th-TH')} km`}</span></span>
+      <span class="muted small">ทุก ${d.intervalKm.toLocaleString('th-TH')} km</span>
+    </div>`).join('') || '<p class="empty">ยังไม่มีรายการบำรุงรักษาในหน้าตั้งค่า</p>';
+}
+
+// ---------- 🧪 ต้นทุนจริง vs โมเดล ----------
+function renderCalibration() {
+  const r = calibrateFromExpenses(expenses, costInputs);
+  if (!r.ok) {
+    $('calib').innerHTML = `<p class="empty">${esc(r.reason)}</p><p class="muted small">เคล็ดลับ: ทุกครั้งที่ชาร์จ ให้ใส่เลขไมล์และ kWh ด้วย จะได้ตัวเลขแม่นที่สุด</p>`;
+    return;
+  }
+  const model = computeCostPerKm(costInputs);
+  const kwhModel = Number(costInputs.kwhPer100km) || 0;
+  const kwhActual = r.kwhPer100km ?? r.kwhPer100kmEstimated;
+  const row = (label, actual, modelV, unit, digits = 2) => {
+    const diff = modelV ? ((actual - modelV) / modelV) * 100 : 0;
+    return `<tr><td>${label}</td><td class="num">${actual.toFixed(digits)} ${unit}</td><td class="num">${modelV.toFixed(digits)} ${unit}</td>
+      <td class="num ${Math.abs(diff) > 15 ? 'neg' : ''}">${diff >= 0 ? '+' : ''}${diff.toFixed(0)}%</td></tr>`;
+  };
+  $('calib').innerHTML = `
+    <p class="muted small">ช่วงเลขไมล์ ${esc(r.from)} → ${esc(r.to)} · วิ่ง ${Math.round(r.km).toLocaleString('th-TH')} km · ค่าชาร์จ ${baht(r.chargeBaht)} · ค่าบำรุง ${baht(r.maintBaht)}</p>
+    <div class="scroll-x"><table class="breakdown num">
+      <tr><td class="muted">รายการ</td><td class="muted">จริง</td><td class="muted">โมเดล</td><td class="muted">ต่าง</td></tr>
+      ${row('ค่าไฟ / พลังงาน', r.energyPerKm, model.energy, '฿/km')}
+      ${kwhActual ? row(`อัตราใช้ไฟ${r.kwhPer100km ? '' : ' (ประมาณจากเงิน)'}`, kwhActual, kwhModel, 'kWh/100km', 1) : ''}
+      ${r.bahtPerKwh ? row('ราคาไฟเฉลี่ย', r.bahtPerKwh, (costInputs.homeSharePct * costInputs.homeRate + (1 - costInputs.homeSharePct) * costInputs.dcRate) || 0, '฿/kWh') : ''}
+      ${row('ค่าบำรุงรักษา (ช่วงนี้)', r.maintenancePerKm, model.maintenance, '฿/km')}
+    </table></div>
+    <p class="muted small">ค่าบำรุงช่วงสั้น ๆ ผันผวนมาก (เช่น เพิ่งเปลี่ยนยาง) ใช้ดูแนวโน้มเท่านั้น · ค่าไฟใช้ปรับโมเดลได้</p>
+    ${kwhActual ? `<div class="actions"><button type="button" class="primary" id="applyCalib" style="white-space:normal;text-align:center">ใช้อัตราใช้ไฟจริง ${kwhActual.toFixed(1)} kWh/100km${r.bahtPerKwh ? ` และราคาไฟ ${r.bahtPerKwh.toFixed(2)} ฿/kWh` : ''} ในโมเดลต้นทุน</button></div>` : ''}`;
+  $('applyCalib')?.addEventListener('click', async () => {
+    if (!confirm('อัปเดตโมเดลต้นทุนด้วยค่าจริง? (ไปกด "นำเรทแนะนำไปใช้" ในหน้าตั้งค่าอีกครั้ง ถ้าต้องการปรับราคาตาม)')) return;
+    const next = { ...costInputs, kwhPer100km: Math.round(kwhActual * 10) / 10 };
+    if (r.bahtPerKwh) { next.homeRate = Math.round(r.bahtPerKwh * 100) / 100; next.dcRate = next.homeRate; }
+    try { await store.saveCostInputs(next); Object.assign(costInputs, next); toast('อัปเดตโมเดลต้นทุนแล้ว'); render(); }
+    catch (e) { toast(`บันทึกไม่สำเร็จ: ${e.message}`); }
+  });
+}
+
+// ---------- 🧾 สรุปภาษีประจำปี ----------
+const thisYear = new Date().getFullYear();
+$('taxYear').innerHTML = [thisYear, thisYear - 1, thisYear - 2].map((y) => `<option value="${y}">ปีภาษี ${y + 543}</option>`).join('');
+function renderTax() {
+  const y = Number($('taxYear').value);
+  const inYear = (d) => d.getFullYear() === y;
+  const trips = quotes.filter((q) => isCompleted(q) && inYear(tripDate(q)));
+  const income = trips.reduce((s, q) => s + (Number(q.fare_quoted) || 0), 0);
+  const exp = expenses.filter((e) => e.category !== 'odometer' && inYear(new Date(`${e.date}T00:00:00`)));
+  const actual = exp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  // ค่าเสื่อมราคารถ (ตามจริงหักได้ ต้องมีหลักฐานการซื้อ): ราคารถ ÷ 5 ปี
+  const depr = (Number(costInputs.carPrice) || 0) / 5;
+  const t = taxComparison({ income, actualExpenses: actual + depr, otherNetIncome: Number($('taxOther').value) || 0, allowances: Number($('taxAllow').value) || 0 });
+  const col = (r, label) => `<td class="num">${baht(r.expense)}<span class="note">${label}</span></td><td class="num">${baht(r.net)}</td><td class="num"><b>${baht(r.tax)}</b>${r.method === 2 ? '<span class="note">วิธีที่ 2 (0.5%)</span>' : ''}</td><td class="num">${baht(r.extraTax)}</td>`;
+  $('tax').innerHTML = `
+    <div class="kpis"><div class="kpi"><div class="k">รายได้ขับรถปี ${y + 543}</div><div class="v num">${baht(income)}</div><div class="k">${trips.length} เที่ยว</div></div>
+      <div class="kpi"><div class="k">ค่าใช้จ่ายจริงที่บันทึก</div><div class="v num">${baht(actual)}</div><div class="k">+ ค่าเสื่อมรถ ~${baht(depr)}/ปี</div></div>
+      <div class="kpi"><div class="k">วิธีที่ประหยัดกว่า</div><div class="v">${t.best === 'flat' ? 'หักเหมา 60%' : 'หักตามจริง'}</div><div class="k">ประหยัด ~${baht(Math.abs(t.flat.tax - t.actual.tax))}</div></div></div>
+    <div class="scroll-x"><table class="breakdown">
+      <tr><td class="muted">วิธีหัก</td><td class="muted">ค่าใช้จ่ายที่หัก</td><td class="muted">เงินได้สุทธิ</td><td class="muted">ภาษีทั้งหมด</td><td class="muted">ส่วนที่เพิ่มจากงานขับรถ</td></tr>
+      <tr class="${t.best === 'flat' ? 'best' : ''}"><td>หักเหมา 60%</td>${col(t.flat, 'ไม่ต้องใช้ใบเสร็จ')}</tr>
+      <tr class="${t.best === 'actual' ? 'best' : ''}"><td>หักตามจริง</td>${col(t.actual, 'ต้องมีหลักฐานทุกรายการ')}</tr>
+    </table></div>
+    ${t.vatWarning ? '<div class="notice">⚠️ รายได้เกิน 1.8 ล้านบาท/ปี ต้องจดทะเบียนภาษีมูลค่าเพิ่ม (VAT)</div>' : ''}
+    <p class="muted small">⚠️ เป็นการประมาณการเพื่อวางแผนเท่านั้น: เงินได้ 40(8) หักค่าใช้จ่ายเหมาได้ 60% หรือหักตามจริงถ้ามีหลักฐาน · ใช้ขั้นภาษีบุคคลธรรมดาปัจจุบัน · คิดวิธีที่ 2 (0.5% เมื่อเงินได้ 40(2)–(8) ≥ 120,000 และภาษีเกิน 5,000) ·
+      ไม่รวมภาษีครึ่งปี (ภ.ง.ด.94) และเงินได้ประเภทอื่น · ควรตรวจสอบกับกรมสรรพากรหรือผู้เชี่ยวชาญก่อนยื่นจริง</p>`;
+}
+for (const id of ['taxYear', 'taxOther', 'taxAllow']) $(id).addEventListener('input', renderTax);
 
 try {
   [quotes, expenses] = await Promise.all([store.listQuotes({ limit: 5000 }), store.listExpenses()]);

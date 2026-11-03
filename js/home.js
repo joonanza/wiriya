@@ -1,6 +1,7 @@
 // ===== หน้าแรกของคนขับ: สรุปรายเดือน + กราฟ + ปฏิทินงาน + งานวันนี้/พรุ่งนี้ =====
 import { requireDriver, enableNotifications } from './auth.js';
 import { upcomingJobs, monthGrid, jobsByDay, jobsOnDay, monthStats, monthTrend, dayKey } from './stats.js';
+import { estimateOdometer, maintenanceDue } from './planning.js';
 import { $, esc, baht, toast, phoneDisplay, fmtDateTime, shortPlace, mapsDirLink, STATUS } from './ui.js';
 
 const store = await requireDriver();
@@ -179,6 +180,17 @@ if (requests.length) {
 renderSummary();
 renderCalendar();
 renderDays();
+
+// 🔧 เตือนบำรุงรักษาที่ใกล้ถึง/เลยกำหนด
+try {
+  const [costInputs, expenses] = await Promise.all([store.getCostInputs(), store.listExpenses()]);
+  const odo = estimateOdometer(expenses, quotes, costInputs.deadheadPct || 0);
+  const due = odo ? maintenanceDue(costInputs.maintenance, expenses, odo.estimated).filter((d) => d.status !== 'ok') : [];
+  if (due.length) {
+    $('maintAlert').hidden = false;
+    $('maintAlert').innerHTML = `🔧 <b>${due.some((d) => d.status === 'overdue') ? 'เลยกำหนดบำรุงรักษา' : 'ใกล้ถึงรอบบำรุงรักษา'}</b> · ${due.slice(0, 2).map((d) => `${esc(d.name)} (${d.remaining <= 0 ? `เลย ${Math.abs(d.remaining).toLocaleString('th-TH')}` : `อีก ${d.remaining.toLocaleString('th-TH')}`} km)`).join(' · ')} <span class="muted">ดูรายละเอียด →</span>`;
+  }
+} catch { /* ไม่สำคัญ */ }
 
 const up = upcomingJobs(quotes, new Date(), 5);
 $('upcoming').innerHTML = up.length

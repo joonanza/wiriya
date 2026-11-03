@@ -74,6 +74,12 @@ create table if not exists public.expenses (
   created_at   timestamptz not null default now()
 );
 create index if not exists expenses_date_idx on public.expenses (date desc);
+-- เพิ่มเติม: kWh ที่ชาร์จ (ปรับโมเดลต้นทุน), รายการบำรุงที่ทำ (เตือนตามเลขไมล์), ประเภท "บันทึกเลขไมล์"
+alter table public.expenses add column if not exists kwh numeric(7,2) check (kwh is null or kwh >= 0);
+alter table public.expenses add column if not exists item text;
+alter table public.expenses drop constraint if exists expenses_category_check;
+alter table public.expenses add constraint expenses_category_check
+  check (category in ('charge','maintenance','tires','insurance','toll','other','odometer'));
 
 -- ---------- updated_at อัตโนมัติ ----------
 create or replace function public.touch_updated_at() returns trigger

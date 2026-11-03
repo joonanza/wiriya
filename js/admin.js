@@ -309,7 +309,22 @@ const SAMPLE_TRIPS = [
   { label: 'ต่างจังหวัดไกล', km: 200, min: 180 },
 ];
 
+/** แนะนำราคาเหมาขั้นต่ำจากต้นทุนจริง: ระยะที่รวมให้ × (1+รถเปล่า) × ต้นทุน/km + ค่าแรง × ชั่วโมง */
+function renderCharterHint() {
+  const el = $('charterHint');
+  if (!el || !fare.charter) return;
+  const cpk = computeCostPerKm(cost).total;
+  const one = (p) => {
+    const carCost = (p.includedKm || 0) * (1 + (cost.deadheadPct || 0)) * cpk;
+    const labor = (cost.driverHourly || 0) * (p.hours || 0);
+    const profit = (p.price || 0) - carCost - labor;
+    return `${p.label || ''}: ต้นทุนรถ ~${baht0(carCost)} + ค่าแรง ~${baht0(labor)} → กำไร ~${baht0(profit)}/วัน`;
+  };
+  el.textContent = `ถ้าวิ่งเต็มระยะที่รวมให้ · ${one({ ...fare.charter.full, label: 'เต็มวัน' })} · ${one({ ...fare.charter.half, label: 'ครึ่งวัน' })}`;
+}
+
 function renderSim() {
+  renderCharterHint();
   const cpk = computeCostPerKm(cost).total;
   const noon = new Date(); noon.setHours(13, 0, 0, 0);
   while (noon.getDay() === 0 || noon.getDay() === 6) noon.setDate(noon.getDate() + 1);

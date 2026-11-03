@@ -124,3 +124,13 @@ test('monthStats counts confirmed+done in month incl. upcoming; monthTrend spans
   assert.equal(t.length, 6);
   assert.deepEqual(t.slice(-2).map((x) => x.jobs), [1, 2]);
 });
+
+test('multi-day charter appears on each calendar day and blocks conflicts', () => {
+  const q = { id: 'c', status: 'confirmed', pickup_at: new Date(2026, 10, 10, 8).toISOString(), options: { charter: { type: 'full', days: 3, hours: 10 } } };
+  const m = jobsByDay([q], 2026, 10);
+  assert.deepEqual([10, 11, 12, 13].map((d) => m.has(dayKey(new Date(2026, 10, d)))), [true, true, true, false]);
+  assert.equal(jobsOnDay([q], new Date(2026, 10, 12)).length, 1);
+  assert.equal(findConflicts([q], { start: new Date(2026, 10, 11, 9), busyMin: 60 }).length, 1);
+  assert.equal(busyMinutes(q), (2 * 24 + 10) * 60);                                            // 10 พ.ย. 08:00 → 12 พ.ย. 18:00
+  assert.equal(findConflicts([q], { start: new Date(2026, 10, 12, 19), busyMin: 60 }, { bufferMin: 30 }).length, 0); // เลิกงานแล้ว
+});

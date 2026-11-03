@@ -105,4 +105,12 @@ await rejects(() => asAnon('select public.respond_to_quote($1, $2)', [TOKEN, 'co
 assert.equal((await asAnon("select count(*)::int n from quotes where confirm_token is not null")).rows[0].n, 0);
 console.log('✅ anon อ่านตาราง quotes ตรง ๆ ไม่ได้ (ต้องผ่านฟังก์ชันเท่านั้น)');
 
+// 7) ค่าใช้จ่าย: kWh / รายการบำรุง / บันทึกเลขไมล์
+await asUser('wiriya.ii1998@gmail.com', "insert into expenses (category, amount, kwh, odometer_km) values ('charge', 300, 60, 11000)");
+await asUser('wiriya.ii1998@gmail.com', "insert into expenses (category, amount, item, odometer_km) values ('tires', 400, 'สลับยาง', 10500)");
+await asUser('wiriya.ii1998@gmail.com', "insert into expenses (category, amount, odometer_km) values ('odometer', 0, 11200)");
+await rejects(() => asUser('wiriya.ii1998@gmail.com', "insert into expenses (category, amount) values ('bogus', 1)"), /check/, 'ประเภทค่าใช้จ่ายแปลก ๆ');
+await rejects(() => asUser('wiriya.ii1998@gmail.com', "insert into expenses (category, amount, kwh) values ('charge', 1, -5)"), /check/, 'kWh ติดลบ');
+console.log('✅ expenses รองรับ kWh, รายการบำรุง และบันทึกเลขไมล์');
+
 console.log('\nผ่านทั้งหมด');

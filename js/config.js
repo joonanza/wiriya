@@ -1,5 +1,6 @@
 // ===== Fare config: ค่าเริ่มต้นคำนวณจาก cost model และเก็บค่าที่แก้ไว้ใน localStorage =====
 import { DEFAULT_COST_INPUTS, recommendRates } from './cost.js';
+import { DEFAULT_CHARTER } from './planning.js';
 
 const FARE_KEY = 'wiriya.fareConfig.v3';
 const COST_KEY = 'wiriya.costInputs.v2';
@@ -22,6 +23,8 @@ export function buildFareConfig(rates, overrides = {}) {
     showPriceToCustomer: false, // หน้าลูกค้า: แสดงราคาประเมินหรือไม่ (ปิด = คนขับแจ้งราคาเอง)
     // EV: ระยะใช้งานจริงต่อชาร์จ (เผื่อแบตสำรอง ~15%) → ใช้แจ้งจำนวนครั้งที่ต้องแวะชาร์จในทริปไกล
     charging: { rangeKm: 280, minutesPerStop: 30, billTime: false },
+    // เหมาวัน (เต็มวัน/ครึ่งวัน) — ค่าไฟรวมในราคาแล้ว
+    charter: JSON.parse(JSON.stringify(DEFAULT_CHARTER)),
     // ศูนย์กลางพื้นที่ให้บริการ: จุดเริ่มต้นแผนที่ และใช้เรียงผลค้นหาตามความใกล้
     serviceArea: { name: 'ชลบุรี', lat: 13.3611, lng: 100.9847, zoom: 11 },
     // สถานที่ยอดนิยม: แสดงให้ลูกค้า/คนขับเลือกได้ทันทีในช่องค้นหา (ทุกคนเห็น → อย่าใส่บ้านลูกค้า)

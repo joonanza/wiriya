@@ -366,3 +366,8 @@ main.home { max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1
 .suggest { max-height: 380px; }
 .popular-grid td:nth-child(1) { width: 40%; }
 input.invalid { border-color: var(--danger); }
+.charter-box { background: var(--surface-2); border-radius: 10px; padding: 10px 12px 2px; margin-bottom: 12px; }
+.maint-alert { background: var(--info-soft); color: var(--info); }
+.maint-overdue .day-txt b { color: var(--danger); }
+tr.best td { background: var(--accent-soft); }
+.charter-grid td:first-child { white-space: nowrap; font-weight: 600; }

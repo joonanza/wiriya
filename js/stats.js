@@ -8,6 +8,7 @@ export const EXPENSE_CATEGORIES = {
   insurance: 'ประกัน/ภาษี',
   toll: 'ทางด่วน/ที่จอด',
   other: 'อื่น ๆ',
+  odometer: 'บันทึกเลขไมล์ (ไม่มีค่าใช้จ่าย)',
 };
 
 /** วันที่อ้างอิงของงาน = เวลารับ (ถ้ามี) ไม่งั้นใช้เวลาสร้าง */
@@ -103,6 +104,8 @@ export function upcomingJobs(quotes, now = new Date(), limit = 5) {
 /** ช่วงเวลาที่รถไม่ว่างของงานหนึ่ง (นาที): เวลาเดินทาง (×2 ถ้าไป-กลับ) + ค่ารอ */
 export function busyMinutes(q) {
   const o = q.options || {};
+  // เหมาวัน: ตั้งแต่เวลารับวันแรก ถึงเลิกงานวันสุดท้าย = (วัน−1)×24 ชม. + ชั่วโมงทำงานต่อวัน (+ ชั่วโมงเกิน)
+  if (o.charter) return ((Math.max(1, Number(o.charter.days) || 1) - 1) * 24 + (Number(o.charter.hours) || 10) + (Number(o.charter.overtimeHours) || 0)) * 60;
   return (Number(q.duration_min) || 60) * (o.roundTrip ? 2 : 1) + (Number(o.waitHours) || 0) * 60;
 }
 
@@ -151,9 +154,18 @@ export function monthGrid(year, month) {
 }
 
 /** งานที่เวลารับตรงกับวันนั้น (ไม่รวมร่าง/ยกเลิก) เรียงตามเวลา */
+/** วันที่งานครอบคลุม (เหมาหลายวัน = หลายวัน) */
+function coversDay(q, date) {
+  const start = new Date(q.pickup_at);
+  const days = Math.max(1, Number(q.options?.charter?.days) || 1);
+  const s = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  return d >= s && d < s + days * 864e5;
+}
+
 export function jobsOnDay(quotes, date) {
   return quotes
-    .filter((q) => q.pickup_at && CAL_STATUSES.includes(q.status) && sameDay(new Date(q.pickup_at), date))
+    .filter((q) => q.pickup_at && CAL_STATUSES.includes(q.status) && coversDay(q, date))
     .sort((a, b) => new Date(a.pickup_at) - new Date(b.pickup_at));
 }
 
@@ -162,10 +174,14 @@ export function jobsByDay(quotes, year, month) {
   const map = new Map();
   for (const q of quotes) {
     if (!q.pickup_at || !CAL_STATUSES.includes(q.status)) continue;
-    const d = new Date(q.pickup_at);
-    if (d.getFullYear() !== year || d.getMonth() !== month) continue;
-    const k = dayKey(d);
-    (map.get(k) || map.set(k, []).get(k)).push(q);
+    const start = new Date(q.pickup_at);
+    const days = Math.max(1, Number(q.options?.charter?.days) || 1);
+    for (let i = 0; i < days; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      if (d.getFullYear() !== year || d.getMonth() !== month) continue;
+      const k = dayKey(d);
+      (map.get(k) || map.set(k, []).get(k)).push(q);
+    }
   }
   return map;
 }

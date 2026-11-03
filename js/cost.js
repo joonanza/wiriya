@@ -24,6 +24,9 @@ export const DEFAULT_COST_INPUTS = Object.freeze({
   homeRate: 3.0,          // ฿/kWh ชาร์จบ้าน TOU off-peak (รวม Ft + VAT โดยประมาณ)
   dcRate: 7.5,            // ฿/kWh ตู้ DC fast charge สาธารณะ
   homeSharePct: 0.70,     // สัดส่วนพลังงานที่ชาร์จที่บ้าน
+  batteryKwh: 50.6,       // ความจุแบตที่ใช้ได้ (kWh)
+  reservePct: 15,         // แบตสำรองขั้นต่ำที่ไม่อยากให้ต่ำกว่า (%)
+  dcKw: 60,               // กำลังชาร์จ DC เฉลี่ยช่วง 20–80% (kW)
   // --- น้ำมัน (ใช้เมื่อ energyType = 'fuel') ---
   fuelPrice: 35,          // ฿/L
   kmPerLiter: 14,         // km/L
@@ -37,6 +40,7 @@ export const DEFAULT_COST_INPUTS = Object.freeze({
   otherPerYear: 6000,           // ค่าจอด, โทรศัพท์/เน็ต, ล้างรถ ฯลฯ
   maintenance: [
     { name: 'ยาง 4 เส้น (215/55 R18)', cost: 16000, intervalKm: 40000 },
+    { name: 'สลับยาง / ตั้งศูนย์', cost: 500, intervalKm: 10000 },
     { name: 'เช็กระยะ (ไส้กรองแอร์, น้ำมันเบรก ฯลฯ)', cost: 2500, intervalKm: 20000 },
     { name: 'ผ้าเบรก (regen ช่วยยืดอายุ)', cost: 3000, intervalKm: 60000 },
     { name: 'แบต 12V / ใบปัดน้ำฝน / อื่น ๆ', cost: 4000, intervalKm: 60000 },
