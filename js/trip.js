@@ -21,7 +21,45 @@ export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true, 
     $('vehicle').append(o);
   }
   if (cfg.vehicles.length < 2) $('vehicle').closest('.field').hidden = true;
-  $('datetime').value = toLocalInput(new Date(Date.now() + 30 * 60000));
+  // ---------- วันที่ + เวลา (24 ชม.) แยกช่อง → รวมเป็นค่าใน #datetime (hidden) ----------
+  const pad2 = (n) => String(n).padStart(2, '0');
+  for (let h = 0; h < 24; h++) $('pickHour').append(new Option(pad2(h), pad2(h)));
+  for (let m = 0; m < 60; m += 5) $('pickMin').append(new Option(pad2(m), pad2(m)));
+  const dayLabel = () => {
+    const v = $('pickDate').value;
+    if (!v) { $('pickDateLabel').textContent = 'กรุณาเลือกวันที่'; return; }
+    const d = new Date(`${v}T00:00`);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diff = Math.round((d - today) / 86400000);
+    const rel = diff === 0 ? 'วันนี้ · ' : diff === 1 ? 'พรุ่งนี้ · ' : diff === 2 ? 'มะรืน · ' : '';
+    $('pickDateLabel').textContent = rel + d.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  const syncDateTime = () => {
+    const v = $('pickDate').value;
+    $('datetime').value = v ? `${v}T${$('pickHour').value}:${$('pickMin').value}` : '';
+    dayLabel();
+  };
+  const setDateTime = (d) => {
+    $('pickDate').value = toLocalInput(d).slice(0, 10);
+    $('pickHour').value = pad2(d.getHours());
+    const mm = pad2(d.getMinutes());
+    if (![...$('pickMin').options].some((o) => o.value === mm)) {
+      // นาทีที่ไม่ลงตัว 5 (เช่น งานเก่า) → เพิ่มตัวเลือกให้ตรงค่าเดิม
+      const opt = new Option(mm, mm);
+      const after = [...$('pickMin').options].find((o) => o.value > mm);
+      $('pickMin').insertBefore(opt, after || null);
+    }
+    $('pickMin').value = mm;
+    syncDateTime();
+  };
+  for (const id of ['pickDate', 'pickHour', 'pickMin']) {
+    $(id).addEventListener('change', () => { syncDateTime(); $('datetime').dispatchEvent(new Event('change')); });
+  }
+  { // ค่าเริ่มต้น: อีก 30 นาที ปัดขึ้นเป็นนาทีที่ลงตัว 5
+    const d = new Date(Date.now() + 30 * 60000);
+    d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
+    setDateTime(d);
+  }
 
   // ---------- แผนที่ ----------
   const hasMap = typeof window.L !== 'undefined';
@@ -400,7 +438,7 @@ export function createTripPlanner(cfg, { onUpdate = () => {}, showPrice = true, 
 
   /** โหลดทริปจาก quote ที่บันทึกไว้ */
   async function load({ pickup, dropoff, pickup_at, options = {} }) {
-    if (pickup_at) { const d = new Date(pickup_at); if (!Number.isNaN(d.getTime())) $('datetime').value = toLocalInput(d); }
+    if (pickup_at) { const d = new Date(pickup_at); if (!Number.isNaN(d.getTime())) setDateTime(d); }
     if (options.vehicleId && cfg.vehicles.some((v) => v.id === options.vehicleId)) $('vehicle').value = options.vehicleId;
     $('roundTrip').checked = !!options.roundTrip;
     $('airport').checked = !!options.airport;
