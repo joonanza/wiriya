@@ -371,3 +371,9 @@ input.invalid { border-color: var(--danger); }
 .maint-overdue .day-txt b { color: var(--danger); }
 tr.best td { background: var(--accent-soft); }
 .charter-grid td:first-child { white-space: nowrap; font-weight: 600; }
+
+/* รายละเอียดใบเสนอราคา (หน้าลูกค้ายืนยัน): ป้ายกำกับ | ค่า ตัดบรรทัดได้ ไม่ล้นจอ */
+.detail-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); margin: 12px 0 0; font-size: 14px; }
+.detail-list dt, .detail-list dd { margin: 0; padding: 8px 0; border-top: 1px solid var(--border); }
+.detail-list dt { color: var(--muted); white-space: nowrap; padding-right: 12px; }
+.detail-list dd { overflow-wrap: anywhere; }

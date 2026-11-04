@@ -35,8 +35,18 @@ function calendarLink(q) {
   return `https://calendar.google.com/calendar/render?${p}`;
 }
 
+const dRow = (label, valueHtml) => `<dt>${label}</dt><dd>${valueHtml}</dd>`;
+const fmtDuration = (min) => {
+  const m = Math.round(Number(min) || 0);
+  return m >= 60 ? `${Math.floor(m / 60)} ชม.${m % 60 ? ` ${m % 60} นาที` : ''}` : `${m} นาที`;
+};
+
 function render(q) {
   const opts = q.options || {};
+  const ch = opts.charter;
+  const charter = ch && ch.type
+    ? `เหมา${ch.type === 'half' ? 'ครึ่งวัน' : 'เต็มวัน'}${Number(ch.days) > 1 ? ` ${Number(ch.days)} วัน` : ''} · รวมค่าไฟ/ค่าชาร์จแล้ว`
+    : '';
   const extras = [opts.roundTrip && 'ไป-กลับ', opts.airport && 'รับ/ส่งสนามบิน', opts.waitHours && `รอ ${opts.waitHours} ชม.`].filter(Boolean).join(' · ');
   const state = q.customer_response === 'confirmed' || q.status === 'confirmed'
     ? `<div class="success">✅ ยืนยันการจองแล้ว${q.responded_at ? ` เมื่อ ${esc(fmtDateTime(q.responded_at))}` : ''} · แล้วพบกันครับ 🙏</div>`
@@ -48,15 +58,16 @@ function render(q) {
     <h2>ใบเสนอราคา${q.customer_name ? ` · คุณ${esc(q.customer_name)}` : ''}</h2>
     <div class="confirm-price"><span class="muted">ราคา</span><span class="amount num">${Math.round(q.fare_quoted || 0).toLocaleString('th-TH')} บาท</span></div>
     <p class="muted">${opts.tollBaht ? 'รวมค่าทางด่วนแล้ว' : 'ไม่รวมค่าทางด่วน (ถ้ามี)'}</p>
-    <table class="breakdown">
-      <tr><td>📅 วัน-เวลารับ</td><td><b>${esc(q.pickup_at ? fmtDateTime(q.pickup_at) : '-')}</b></td></tr>
-      <tr><td>🟢 จุดรับ</td><td>${esc(shortPlace(q.pickup_name))}</td></tr>
-      <tr><td>🔴 จุดส่ง</td><td>${esc(shortPlace(q.dropoff_name))}</td></tr>
-      ${q.distance_km ? `<tr><td>📏 ระยะทาง</td><td>${Number(q.distance_km).toFixed(1)} km${q.duration_min ? ` (~${Math.round(q.duration_min)} นาที)` : ''}</td></tr>` : ''}
-      ${extras ? `<tr><td>➕ เพิ่มเติม</td><td>${esc(extras)}</td></tr>` : ''}
-      ${q.note ? `<tr><td>📝 หมายเหตุ</td><td>${esc(q.note)}</td></tr>` : ''}
-      ${q.customer_phone_masked ? `<tr><td>📞 เบอร์ผู้จอง</td><td>${esc(q.customer_phone_masked)}</td></tr>` : ''}
-    </table>
+    <dl class="detail-list">
+      ${dRow('📅 วัน-เวลารับ', `<b>${esc(q.pickup_at ? fmtDateTime(q.pickup_at) : '-')}</b>`)}
+      ${dRow('🟢 จุดรับ', esc(shortPlace(q.pickup_name)))}
+      ${q.dropoff_name && q.dropoff_name !== q.pickup_name ? dRow('🔴 จุดส่ง', esc(shortPlace(q.dropoff_name))) : ''}
+      ${charter ? dRow('🚐 รูปแบบ', esc(charter)) : ''}
+      ${q.distance_km ? dRow('📏 ระยะทาง', `${charter ? '~' : ''}${Number(q.distance_km).toFixed(0)} km${q.duration_min && !charter ? ` (~${fmtDuration(q.duration_min)})` : ''}`) : ''}
+      ${extras ? dRow('➕ เพิ่มเติม', esc(extras)) : ''}
+      ${q.note ? dRow('📝 หมายเหตุ', esc(q.note)) : ''}
+      ${q.customer_phone_masked ? dRow('📞 เบอร์ผู้จอง', esc(q.customer_phone_masked)) : ''}
+    </dl>
     ${state}
     <div class="actions">
       ${coords ? `<a class="btn" target="_blank" rel="noopener" href="${mapsDirLink(q.pickup, q.dropoff)}">🗺️ ดูเส้นทาง</a>` : ''}
