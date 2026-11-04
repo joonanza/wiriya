@@ -182,3 +182,70 @@ test('dashboard-paste bundle is up to date and parses as a module', async () => 
   assert.equal(typeof mod.handle, 'function');
   assert.equal(mod.buildRequestMessage(QUOTE, 'https://a.b/').type, 'flex');
 });
+
+// ---------- สรุปงานพรุ่งนี้ ----------
+import { buildDailyMessage, bangkokTomorrow, jobsForDay } from '../supabase/functions/notify-line/message.js';
+const SECRET = 'x'.repeat(30);
+function dailySetup(quotes, { env = {}, now = '2026-11-04T15:00:00Z' } = {}) {
+  const calls = { fetch: [], list: [] };
+  const vars = { LINE_CHANNEL_ACCESS_TOKEN: 'tok', LINE_DRIVER_USER_ID: 'Uabc', APP_URL: 'https://joonanza.github.io/wiriya/', CRON_SECRET: SECRET, ...env };
+  const handle = createHandler({
+    env: (k) => vars[k], now: () => new Date(now),
+    async listJobsBetween(f, t) { calls.list.push([f, t]); return quotes; },
+    async fetch(url, init) { calls.fetch.push({ url, body: JSON.parse(init.body) }); return new Response('{}', { status: 200 }); },
+  });
+  return { handle, calls };
+}
+const job = (id, iso, extra = {}) => ({ id, status: 'confirmed', customer_name: 'ลูกค้า' + id, customer_phone: '0812345678', pickup: { name: 'บางแสน, ชลบุรี' }, dropoff: { name: 'สุวรรณภูมิ' }, pickup_at: iso, fare_quoted: 1200, options: {}, ...extra });
+
+test('bangkokTomorrow: 22:00 ไทย (15:00Z) → พรุ่งนี้ 00:00–24:00 ไทย', () => {
+  const { start, end } = bangkokTomorrow(new Date('2026-11-04T15:00:00Z'));
+  assert.equal(start.toISOString(), '2026-11-04T17:00:00.000Z');
+  assert.equal(end.toISOString(), '2026-11-05T17:00:00.000Z');
+});
+
+test('daily: ไม่มี/ผิด CRON_SECRET → 401 ไม่แตะ DB/LINE; ไม่ได้ตั้ง secret → 500', async () => {
+  const { handle, calls } = dailySetup([job('a', '2026-11-05T02:00:00Z')]);
+  assert.equal((await handle(post({ event: 'daily' }))).status, 401);
+  assert.equal((await handle(post({ event: 'daily' }, { 'x-cron-secret': 'y'.repeat(30) }))).status, 401);
+  assert.equal(calls.list.length + calls.fetch.length, 0);
+  const s2 = dailySetup([], { env: { CRON_SECRET: '' } });
+  assert.equal((await s2.handle(post({ event: 'daily' }, { 'x-cron-secret': '' }))).status, 500);
+});
+
+test('daily: ส่งสรุปงานพรุ่งนี้ เรียงตามเวลา รวมทุกสถานะยกเว้นยกเลิก + งานเหมาหลายวันที่คาบเกี่ยว', async () => {
+  const quotes = [
+    job('late', '2026-11-05T10:00:00Z', { status: 'sent' }),
+    job('early', '2026-11-05T00:30:00Z'),                 // 07:30 ไทย
+    job('cxl', '2026-11-05T03:00:00Z', { status: 'cancelled' }),
+    job('today', '2026-11-04T12:00:00Z'),                 // วันนี้ ไม่นับ
+    job('charter', '2026-11-04T01:00:00Z', { options: { charter: { type: 'full', days: 2 } } }), // วันที่ 2/2
+    job('after', '2026-11-05T18:00:00Z'),                 // มะรืน (01:00 ไทย) ไม่นับ
+  ];
+  const { handle, calls } = dailySetup(quotes);
+  const res = await handle(post({ event: 'daily' }, { 'x-cron-secret': SECRET }));
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).jobs, 3);
+  const msg = calls.fetch[0].body.messages[0];
+  const txt = JSON.stringify(msg);
+  assert.ok(txt.indexOf('วันที่ 2/2') < txt.indexOf('07:30') && txt.indexOf('07:30') < txt.indexOf('17:00'));
+  assert.ok(txt.includes('รอยืนยัน') && !txt.includes('ลูกค้าcxl') && !txt.includes('ลูกค้าtoday') && !txt.includes('ลูกค้าafter'));
+  assert.match(msg.altText, /3 งาน/);
+  assert.ok(txt.includes('quote.html?quote=early'));
+});
+
+test('daily: พรุ่งนี้ไม่มีงาน → ไม่ส่ง LINE', async () => {
+  const { handle, calls } = dailySetup([job('today', '2026-11-04T12:00:00Z')]);
+  const res = await handle(post({ event: 'daily' }, { 'x-cron-secret': SECRET }));
+  assert.deepEqual(await res.json(), { ok: true, skipped: true, reason: 'no-jobs' });
+  assert.equal(calls.fetch.length, 0);
+});
+
+test('buildDailyMessage: จำกัดจำนวนงานในข้อความ และขนาดไม่เกินขีด LINE (30KB)', () => {
+  const { start, end } = bangkokTomorrow(new Date('2026-11-04T15:00:00Z'));
+  const many = Array.from({ length: 30 }, (_, i) => job('j' + i, new Date(start.getTime() + i * 1800e3).toISOString(), { note: 'x'.repeat(300) }));
+  const msg = buildDailyMessage(jobsForDay(many, start, end), start, 'https://joonanza.github.io/wiriya/');
+  const t = JSON.stringify(msg);
+  assert.ok(t.includes('+ อีก 18 งาน'));
+  assert.ok(Buffer.byteLength(t) < 30000);
+});

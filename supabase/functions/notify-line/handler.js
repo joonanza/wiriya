@@ -3,6 +3,7 @@
 // POST { id }        → ลูกค้าเพิ่งส่งคำขอ: ส่ง LINE หาคนขับ (เฉพาะคำขอใหม่ที่ยังไม่เคยแจ้ง ภายใน 15 นาที)
 // POST { test:true } → คนขับกดทดสอบจากหน้าตั้งค่า (ต้องล็อกอิน)
 // POST { event:'response', id } → ลูกค้าเพิ่งกดยืนยัน/ขอเปลี่ยนแปลงจากลิงก์ (แจ้งครั้งเดียว ภายใน 15 นาที)
+// POST { event:'daily' } + header x-cron-secret → สรุปงานพรุ่งนี้ (pg_cron เรียกทุก 22:00 น.) ไม่มีงาน = ไม่ส่ง
 //
 // deps = {
 //   env(name)                      → ค่า secret/env
@@ -14,9 +15,18 @@
 //   claimResponse(id, sinceIso)    → quote | null   (ทำเครื่องหมาย response_notified_at แบบ atomic)
 //   releaseResponse(id)            → void
 //   fetch                          → fetch API
+//   listJobsBetween(fromIso, toIso) → quote[]       (งานที่ pickup_at อยู่ในช่วง สำหรับสรุปรายวัน)
 //   now()                          → Date
 // }
-import { buildRequestMessage, buildTestMessage, buildResponseMessage } from './message.js';
+import { buildRequestMessage, buildTestMessage, buildResponseMessage, buildDailyMessage, bangkokTomorrow, jobsForDay } from './message.js';
+
+// เทียบรหัสลับแบบเวลาคงที่ (กันเดารหัสจากเวลาตอบกลับ)
+function safeEqual(a, b) {
+  const x = String(a || ''); const y = String(b || '');
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x.charCodeAt(i) || 0) ^ (y.charCodeAt(i) || 0);
+  return diff === 0;
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CLAIM_WINDOW_MS = 15 * 60 * 1000;
@@ -67,6 +77,22 @@ export function createHandler(deps) {
       }
       const r = await pushToDriver(buildTestMessage(appUrl));
       return r.ok ? json(200, { ok: true, sent: true }) : json(r.status, { error: r.error });
+    }
+
+    // ---- สรุปงานพรุ่งนี้ (ตั้งเวลาจาก pg_cron) ----
+    if (body && body.event === 'daily') {
+      const secret = deps.env('CRON_SECRET');
+      if (!secret || secret.length < 24) return json(500, { error: 'ยังไม่ได้ตั้ง CRON_SECRET (อย่างน้อย 24 ตัวอักษร)' });
+      if (!safeEqual(req.headers.get('x-cron-secret'), secret)) return json(401, { error: 'unauthorized' });
+      if (!deps.listJobsBetween) return json(500, { error: 'listJobsBetween not configured' });
+      const { start, end } = bangkokTomorrow(now());
+      // ดึงย้อนหลัง 14 วันด้วย เพื่อจับงานเหมาหลายวันที่เริ่มก่อนหน้าแต่ยังคาบถึงพรุ่งนี้
+      const from = new Date(start.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
+      const quotes = await deps.listJobsBetween(from, end.toISOString());
+      const jobs = jobsForDay(quotes, start, end);
+      if (!jobs.length) return json(200, { ok: true, skipped: true, reason: 'no-jobs' });
+      const r = await pushToDriver(buildDailyMessage(jobs, start, appUrl));
+      return r.ok ? json(200, { ok: true, sent: true, jobs: jobs.length }) : json(r.status, { error: r.error });
     }
 
     // ---- คำขอจองใหม่ ----

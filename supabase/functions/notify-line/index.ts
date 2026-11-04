@@ -8,6 +8,7 @@
 //   APP_URL                    เช่น https://joonanza.github.io/wiriya/
 //   ALLOWED_ORIGIN (ไม่บังคับ)   เช่น https://joonanza.github.io
 //   LINE_MAX_PER_HOUR (ไม่บังคับ) เพดานแจ้งเตือนต่อชั่วโมง ค่าเริ่มต้น 10
+//   CRON_SECRET                รหัสลับสุ่ม ≥ 24 ตัว สำหรับสรุปงานพรุ่งนี้ 22:00 (ต้องตรงกับใน Vault: supabase/daily-summary.sql)
 // SUPABASE_URL และ SUPABASE_SERVICE_ROLE_KEY มีให้อัตโนมัติใน Edge Function
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { createHandler } from './handler.js';
@@ -52,6 +53,16 @@ const handle = createHandler({
   async countNotifiedSince(iso) {
     const { count } = await admin.from('quotes').select('id', { count: 'exact', head: true }).gte('line_notified_at', iso);
     return count || 0;
+  },
+  async listJobsBetween(fromIso, toIso) {
+    const { data, error } = await admin.from('quotes')
+      .select('id,status,customer_name,customer_phone,pickup,dropoff,pickup_at,fare_quoted,options')
+      .gte('pickup_at', fromIso).lt('pickup_at', toIso)
+      .neq('status', 'cancelled')
+      .order('pickup_at', { ascending: true })
+      .limit(200);
+    if (error) throw new Error(error.message);
+    return data || [];
   },
   async isDriverEmail(email) {
     const { data } = await admin.from('drivers').select('email').eq('email', email).maybeSingle();
